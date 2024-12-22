@@ -28,7 +28,7 @@ class DGSSModel(nn.Module):
         encoder_text_dim = {"vit":None, "tiny_clip":256, "clip":512}[encoder_name]    
 
         self.encoder = {"vit":ViTModel, "tiny_clip":CLIPModel, "clip":CLIPModel}[encoder_name].from_pretrained(encoder_config)
-        # self.encoder.gradient_checkpointing_enable({"use_reentrant": False})
+        
         self.freeze_vision_encoder = freeze_vision_encoder
 
         self.out_indices = {"vit":[3, 5, 7, 11], "tiny_clip":[4, 7, 10], "clip":[3, 5, 7, 11]}[encoder_name][-3:]

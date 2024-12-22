@@ -62,12 +62,12 @@ class CityscapesDataset(Dataset):
 
         lbl = self.encode_label(lbl)
 
-        if self.split == "train" or self.stats: 
+        if 1: 
             # Training
             img = torch.from_numpy(np.transpose(img,(2, 1, 0)))
             lbl = torch.from_numpy(np.transpose(lbl)).long()
 
-            if self.stats:
+            if self.stats or self.split == "val":
                 output = {"img": img, "lbl": lbl, "fname": name}
                 return output
 

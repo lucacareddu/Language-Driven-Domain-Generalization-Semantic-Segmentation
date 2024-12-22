@@ -7,9 +7,10 @@ from PIL import Image
 
 
 class GTA5Dataset(Dataset):
-    def __init__(self, root, ignore_index, resize=None, transforms=None, stats=False):
+    def __init__(self, root, ignore_index, split="train", val_indices=None, resize=None, transforms=None, stats=False):
         self.root = root
         self.ignore_index = ignore_index
+        self.split = split
         self.resize = resize
         self.transforms = transforms
         self.stats = stats
@@ -23,17 +24,24 @@ class GTA5Dataset(Dataset):
             "labels" : glob.glob(f"{os.path.join(root,'labels')}/*.png")
         }
 
+        self.files["images"].sort()
+        self.files["labels"].sort()
+
         assert len(self.files["images"]) == len(self.files["labels"]) == 24966
 
-        # self.rand_indices = np.random.choice(list(range(len(self.files["images"]))), size=500, replace=False)
+        if val_indices is not None:
+            indices = [i for i in range(24966) if i not in val_indices] if split=="train" else val_indices
+            self.map_indices = np.random.permutation(indices)
+        else:
+            self.map_indices = np.random.permutation(24966)
 
 
     def __len__(self):
-        return len(self.files["images"]) # len(self.rand_indices)
+        return len(self.map_indices)
 
 
     def __getitem__(self, idx):
-        # idx = self.rand_indices[idx]
+        idx = self.map_indices[idx]
             
         img = Image.open(self.files["images"][idx]).convert('RGB')
         lbl = Image.open(self.files["labels"][idx])
@@ -54,7 +62,7 @@ class GTA5Dataset(Dataset):
         img = torch.from_numpy(np.transpose(img, (2,1,0)))
         lbl = torch.from_numpy(np.transpose(lbl)).long()
 
-        if self.stats:
+        if self.stats or self.split == "val":
             output = {"img": img, "lbl": lbl, "fname": name}
             return output
 
@@ -89,8 +97,6 @@ if __name__=="__main__":
     from torch.utils.data import DataLoader
     from utils.visualization import visualize
     from transformscpu import *
-    from transformsgpu import train_aug
-    from utils.colors import GTA_MEAN, GTA_STD
 
     transforms = Compose([CentroidCCrop((512,512))])
 
@@ -100,9 +106,3 @@ if __name__=="__main__":
     for b in dl:
         images, labels = b["img"], b["lbl"]
         visualize(img=images.squeeze(0).numpy(), lbl=labels.squeeze(0).numpy(), pred=labels.squeeze(0).numpy(), fullscreen=False)
-
-        images, labels = train_aug(images=images, labels=labels, normalization=False)
-        visualize(images.squeeze(0).numpy(), labels.squeeze(0).numpy())
-
-        images, labels = train_aug(images=images, labels=labels, mean=GTA_MEAN, std=GTA_STD)
-        visualize(images.squeeze(0).numpy(), labels.squeeze(0).numpy())
