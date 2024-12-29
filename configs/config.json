@@ -21,7 +21,7 @@
   },  
   
   "encoder":{
-    "name":"vit",
+    "name":"clip",
     "use_text":0
   },
 
@@ -32,12 +32,12 @@
     "iters_per_val":4000,
     "log_dir":"logs",
     "do_checkpoints":1,
-    "iters_per_save":4000,
+    "iters_per_save":40000,
     "checkpoint_dir":"checkpoints"
   },
 
   "grad_clip":{
-    "enable":1,
+    "enable":0,
     "small_model":0.1,
     "large_model":0.01
   },

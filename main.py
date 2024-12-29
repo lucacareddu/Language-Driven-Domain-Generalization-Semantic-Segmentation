@@ -59,7 +59,7 @@ lr_warmup_iters = config["optimizer"]["lr_warmup_iterations"]
 
 #################################################################################################
 
-SEED = 0
+SEED = 2
 
 if True:
     fix_seed(SEED=SEED)
@@ -83,7 +83,7 @@ text_prompts = [f"a photo of a {c}." for c in CITY_VALID_CLASSES] if use_text el
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=True)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts)
 model.to(device)
 
 model.print_trainable_params()

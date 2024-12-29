@@ -38,7 +38,7 @@ class DGSSModel(nn.Module):
         else:
             self.neck = tqdmNeck(width=encoder_visual_dim)
 
-        if encoder_name == "xxx":
+        if 1:
             vision_decoder_config = Mask2FormerConfig(num_labels=nclasses, ignore_value=ignore_value, feature_channels=[encoder_visual_dim] * 3, encoder_layers=1, decoder_layers=3, num_queries=(nclasses if self.has_text_decoder else nqueries))
         else:
             vision_decoder_config = Mask2FormerConfig(num_labels=nclasses, ignore_value=ignore_value, feature_channels=[encoder_visual_dim] * 3, num_queries=(nclasses if self.has_text_decoder else nqueries))
