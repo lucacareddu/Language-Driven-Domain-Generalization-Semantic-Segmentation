@@ -80,6 +80,8 @@ city_val_loader = DataLoader(val_city, batch_size=batch_size, num_workers=num_wo
 
 #################################################################################################
 
+text_prompts = None
+
 if use_text:
     if True:
         print("Class definitions employed.")
@@ -105,8 +107,7 @@ params = []
 if "clip" in model.encoder_name and model.freeze_text_encoder:
     params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
 else:
-    params.append({'name':"vision_encoder", 'params': model.encoder.vision_model.parameters()})
-    params.append({'name':"text_encoder", 'params': model.encoder.text_model.parameters()})
+    params.append({'name':"encoder", 'params': model.encoder.parameters()})
 
 params.append({'name':"neck", 'params': model.neck.parameters()})
 params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})
