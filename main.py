@@ -80,11 +80,21 @@ city_val_loader = DataLoader(val_city, batch_size=batch_size, num_workers=num_wo
 
 #################################################################################################
 
-text_prompts = [f"a photo of a {c}." for c in CITY_VALID_CLASSES] if use_text else None
+if use_text:
+    if True:
+        print("Class definitions employed.")
+        with open("class_definition/class_definition.json","r") as f:
+            class_definition = json.load(f)
+            class_definition = df_dict_search(dictionary=class_definition, class_names=CITY_VALID_CLASSES)
+            text_prompts = [f"{c}: " + class_definition[c] for c in CITY_VALID_CLASSES]
+            # print([len(x) for x in text_prompts])
+    else:
+        print("Class names employed.")
+        text_prompts = [f"a photo of a {c}." for c in CITY_VALID_CLASSES]
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_text_encoder=False)
 model.to(device)
 
 model.print_trainable_params()
@@ -95,7 +105,8 @@ params = []
 if "clip" in model.encoder_name and model.freeze_text_encoder:
     params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
 else:
-    params.append({'name':"encoder", 'params': model.encoder.parameters()})
+    params.append({'name':"vision_encoder", 'params': model.encoder.vision_model.parameters()})
+    params.append({'name':"text_encoder", 'params': model.encoder.text_model.parameters()})
 
 params.append({'name':"neck", 'params': model.neck.parameters()})
 params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})

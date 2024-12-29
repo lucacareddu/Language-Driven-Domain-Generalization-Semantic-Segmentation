@@ -9,6 +9,17 @@ def fix_seed(SEED, deterministic=True):
     torch.backends.cudnn.deterministic = deterministic
     torch.backends.cudnn.benchmark = False
 
+def df_dict_search(dictionary, class_names, max_length=200):
+    ret = {}
+    for k,v in dictionary.items():
+        if isinstance(dictionary[k], dict):
+            temp = df_dict_search(dictionary[k], class_names)
+            if temp != {}:
+                ret.update(temp)
+        elif k in class_names:
+            ret[k] = v[:max_length]
+    return ret
+
 def collate_fn(batch):
     op = torch.stack if batch[0]["img"].dim() == 3 else torch.cat
     output = {
@@ -51,5 +62,7 @@ def adjust_learning_rate(lr, lr_power, i_iter, warmup_iters, max_iterations, opt
     for param in optimizer.param_groups:
         if param["name"] in ["vision_decoder", "neck"]:
             param['lr'] = lr * 10
+        elif param["name"] == "text_decoder":
+            param['lr'] = lr
         else:
             param['lr'] = learning_rate
