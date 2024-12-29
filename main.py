@@ -43,6 +43,7 @@ city_root = config["city"]["remote_root"] if config["remote"] else config["city"
 city_inp_size = tuple(config["city"]["input_size"])
 crop_size = tuple(config["preprocessing"]["crop_size"])
 ignore_index = config["preprocessing"]["ignore_index"]
+normalization = config["preprocessing"]["normalize"]
 batch_size = config["training"]["batch_size"]
 num_workers = config["training"]["num_workers"]
 max_iterations = config["training"]["max_iterations"]
@@ -136,7 +137,7 @@ for i_iter in trange(iter_start, max_iterations):
     classes = [x.to(device) for x in batch["classes"]]
     binmasks = [x.to(device) for x in batch["bin_masks"]]
 
-    if 1:
+    if normalization:
         images = normalize(images)
 
     loss = model(pixel_values=images, bin_masks=binmasks, classes=classes)
@@ -175,7 +176,7 @@ for i_iter in trange(iter_start, max_iterations):
                     images = batch["image"].to(device)
                     labels = batch["label"].to(device)              
 
-                    if 1:
+                    if normalization:
                         images = normalize(images)
                     
                     h_stride, w_stride = stride

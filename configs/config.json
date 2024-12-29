@@ -17,7 +17,8 @@
 
   "preprocessing":{
     "crop_size":[512,512],
-    "ignore_index":255
+    "ignore_index":255,
+    "normalize":0
   },  
   
   "encoder":{
