@@ -23,7 +23,9 @@
   
   "encoder":{
     "name":"vit",
-    "use_text":0
+    "freeze_vision":1,
+    "use_text":0,
+    "freeze_text":0
   },
 
   "training":{

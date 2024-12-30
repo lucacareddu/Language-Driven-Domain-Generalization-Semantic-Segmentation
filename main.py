@@ -36,7 +36,9 @@ else:
 debug = config["debug_mode"]
 
 encoder_name = config["encoder"]["name"]
+freeze_vision = config["encoder"]["freeze_vision"]
 use_text = "clip" in encoder_name and config["encoder"]["use_text"]
+freeze_text = config["encoder"]["freeze_text"]
 gta_root = config["gta"]["remote_root"] if config["remote"] else config["gta"]["local_root"]
 gta_inp_size = tuple(config["gta"]["input_size"])
 city_root = config["city"]["remote_root"] if config["remote"] else config["city"]["local_root"]
@@ -96,7 +98,7 @@ if use_text:
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_text_encoder=False)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text)
 model.to(device)
 
 model.print_trainable_params()
@@ -104,9 +106,9 @@ model.print_frozen_modules()
 
 params = []
 
-if "clip" in model.encoder_name and model.freeze_text_encoder:
+if "clip" in model.encoder_name and freeze_text:
     params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
-else:
+elif not freeze_vision:
     params.append({'name':"encoder", 'params': model.encoder.parameters()})
 
 params.append({'name':"neck", 'params': model.neck.parameters()})
