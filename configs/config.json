@@ -22,7 +22,7 @@
   },  
   
   "encoder":{
-    "name":"clip",
+    "name":"vit",
     "use_text":0
   },
 
