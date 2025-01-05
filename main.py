@@ -32,13 +32,19 @@ if resume_path is not None:
 else:
     config = json.load(open("configs/config.json"))
 
-
+SEED = config["SEED"]
 debug = config["debug_mode"]
 
 encoder_name = config["encoder"]["name"]
 freeze_vision = config["encoder"]["freeze_vision"]
-use_text = "clip" in encoder_name and config["encoder"]["use_text"]
 freeze_text = config["encoder"]["freeze_text"]
+
+shallow_m2f = config["decoder"]["shallow_m2f"]
+use_text = "clip" in encoder_name and config["decoder"]["use_text"]
+classdef_prompts = use_text and config["decoder"]["classdef_prompts"]
+use_classes = config["decoder"]["use_classes"]
+predict_classes = config["decoder"]["predict_classes"]
+
 gta_root = config["gta"]["remote_root"] if config["remote"] else config["gta"]["local_root"]
 gta_inp_size = tuple(config["gta"]["input_size"])
 city_root = config["city"]["remote_root"] if config["remote"] else config["city"]["local_root"]
@@ -46,6 +52,7 @@ city_inp_size = tuple(config["city"]["input_size"])
 crop_size = tuple(config["preprocessing"]["crop_size"])
 ignore_index = config["preprocessing"]["ignore_index"]
 normalization = config["preprocessing"]["normalize"]
+
 batch_size = config["training"]["batch_size"]
 num_workers = config["training"]["num_workers"]
 max_iterations = config["training"]["max_iterations"]
@@ -54,6 +61,7 @@ log_dir = config["training"]["log_dir"]
 do_checkpoints = config["training"]["do_checkpoints"]
 iters_per_save = config["training"]["iters_per_save"]
 checkpoint_dir = config["training"]["checkpoint_dir"]
+
 grad_clip = config["grad_clip"]["enable"]
 grad_clip_value = config["grad_clip"]["small_model"] if encoder_name == "tiny_clip" else config["grad_clip"]["large_model"]
 lr = config["optimizer"]["learning_rate"]
@@ -61,8 +69,6 @@ lr_power = config["optimizer"]["lr_power"]
 lr_warmup_iters = config["optimizer"]["lr_warmup_iterations"]
 
 #################################################################################################
-
-SEED = 2
 
 if True:
     fix_seed(SEED=SEED)
@@ -85,7 +91,7 @@ city_val_loader = DataLoader(val_city, batch_size=batch_size, num_workers=num_wo
 text_prompts = None
 
 if use_text:
-    if True:
+    if classdef_prompts:
         print("Class definitions employed.")
         with open("class_definition/class_definition.json","r") as f:
             class_definition = json.load(f)
@@ -98,7 +104,7 @@ if use_text:
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text, shallow_m2f=shallow_m2f, use_classes=use_classes, predict_classes=predict_classes)
 model.to(device)
 
 model.print_trainable_params()
@@ -106,7 +112,7 @@ model.print_frozen_modules()
 
 params = []
 
-if "clip" in model.encoder_name and freeze_text:
+if "clip" in encoder_name and freeze_text:
     params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
 elif not freeze_vision:
     params.append({'name':"encoder", 'params': model.encoder.parameters()})

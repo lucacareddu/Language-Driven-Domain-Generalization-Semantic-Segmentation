@@ -12,7 +12,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class DGSSModel(nn.Module):
-    def __init__(self, encoder_name, ignore_value, text_prompts=None, nclasses=19, freeze_vision_encoder=False, freeze_text_encoder=True, no_neck=True, depthwise_neck=False, tqdm_neck=False, use_text_keys=False, use_text_queries=True, nqueries=100):
+    def __init__(self, encoder_name, ignore_value, text_prompts=None, nclasses=19, freeze_vision_encoder=False, freeze_text_encoder=True, no_neck=True, depthwise_neck=False, tqdm_neck=False, shallow_m2f=False, use_classes=False, predict_classes=False, use_text_keys=False, use_text_queries=True, nqueries=100):
         super().__init__()
 
         self.has_text_decoder = "clip" in encoder_name and text_prompts is not None
@@ -38,7 +38,7 @@ class DGSSModel(nn.Module):
         else:
             self.neck = tqdmNeck(width=encoder_visual_dim)
 
-        if 1:
+        if shallow_m2f:
             vision_decoder_config = Mask2FormerConfig(num_labels=nclasses, ignore_value=ignore_value, feature_channels=[encoder_visual_dim] * 3, encoder_layers=1, decoder_layers=3, num_queries=(nclasses if self.has_text_decoder else nqueries))
         else:
             vision_decoder_config = Mask2FormerConfig(num_labels=nclasses, ignore_value=ignore_value, feature_channels=[encoder_visual_dim] * 3, num_queries=(nclasses if self.has_text_decoder else nqueries))
@@ -52,7 +52,9 @@ class DGSSModel(nn.Module):
             self.text_ids = text_tokenized["input_ids"].cuda()
             self.text_att = text_tokenized["attention_mask"].cuda()
 
-            self.text_decoder = TextDecoder(visual_dim=encoder_visual_dim, text_dim=encoder_text_dim, return_keys=use_text_keys, return_queries=use_text_queries)
+            self.text_decoder = TextDecoder(visual_dim=encoder_visual_dim, text_dim=encoder_text_dim, use_classes=use_classes, predict_classes=predict_classes, return_keys=use_text_keys, return_queries=use_text_queries)
+
+            self.predict_classes = predict_classes
 
             if use_text_keys:
                 self.vision_decoder.model.pixel_level_module.decoder.encoder.crss_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim=vision_decoder_config.hidden_dim, 
@@ -87,7 +89,7 @@ class DGSSModel(nn.Module):
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
-        if mode and "clip" in self.encoder_name and self.freeze_text_encoder:
+        elif mode and "clip" in self.encoder_name and self.freeze_text_encoder:
             self.encoder.text_model.train(False)
             for param in self.encoder.text_model.parameters():
                 param.requires_grad = False
@@ -105,21 +107,21 @@ class DGSSModel(nn.Module):
         if self.has_text_decoder:
             text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
 
-            cls_loss, keys, queries = self.text_decoder(text=text_outputs, visual=vision_hidden_states[-1], classes=classes)
+            outs = self.text_decoder(text=text_outputs, visual=vision_hidden_states[-1], classes=classes)
 
-            if keys is not None:
+            if outs["keys"] is not None:
                 # To cross-attention layers in pixel decoder (mask2former encoder) as key-value
-                self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys = keys
+                self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys = outs["keys"]
             
-            if queries is not None:
+            if outs["queries"] is not None:
                 # To cross-attention layers in transformer decoder layers (mask2former decoder) as queries
-                self.vision_decoder.model.transformer_module.text_queries = queries
+                self.vision_decoder.model.transformer_module.text_queries = outs["queries"]
 
         multi_scale_feats = self.neck(vision_hidden_states)
 
         decoder_outputs = self.vision_decoder(pixel_values=multi_scale_feats, mask_labels=bin_masks, class_labels=classes)
 
-        loss = decoder_outputs.loss# + cls_loss
+        loss = decoder_outputs.loss + (outs["loss"] if self.has_text_decoder and self.predict_classes else 0)
         
         if return_logits:
             upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(decoder_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])

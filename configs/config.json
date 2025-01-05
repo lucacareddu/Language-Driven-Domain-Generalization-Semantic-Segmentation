@@ -1,5 +1,7 @@
 {
   "remote":1,
+
+  "SEED":2,
   
   "debug_mode":0,
 
@@ -24,8 +26,15 @@
   "encoder":{
     "name":"clip",
     "freeze_vision":0,
-    "use_text":0,
     "freeze_text":0
+  },
+
+  "decoder":{
+    "shallow_m2f":0,
+    "use_text":1,
+    "classdef_prompts":0,
+    "use_classes":0,
+    "predict_classes":0
   },
 
   "training":{

@@ -10,11 +10,11 @@ from models.denseclip import DenseCLIPContextDecoder
 
 
 class TextDecoder(nn.Module):
-    def __init__(self, visual_dim, text_dim, return_keys, return_queries=True, out_dim=256):
+    def __init__(self, visual_dim, text_dim, use_classes, predict_classes, return_keys, return_queries=True, out_dim=256):
         super().__init__()
         assert return_keys or return_queries
 
-        if 1:
+        if use_classes or predict_classes:
             self.missing_emb = nn.Parameter(torch.randn(19, text_dim)) # missing classes place-holder embeddings
         
         self.text_proj = nn.Parameter(torch.randn(text_dim, text_dim)) 
@@ -30,11 +30,14 @@ class TextDecoder(nn.Module):
 
         nn.init.trunc_normal_(self.context_decoder.gamma, std=.02)
 
-        if 1:
+        if predict_classes:
             self.missing_class_predictor = nn.Linear(text_dim, 1)
             nn.init.trunc_normal_(self.missing_class_predictor.weight, std=.01)
 
             self.missing_class_criterion = nn.BCELoss()
+
+        self.predict = predict_classes
+        self.oracle = use_classes and not predict_classes
 
         if return_keys:
             self.keys_proj = nn.Linear(text_dim, out_dim)
@@ -61,13 +64,13 @@ class TextDecoder(nn.Module):
             nn.init.constant_(m.bias, 0)
 
 
-    def forward(self, text: Tensor, visual: Tensor, classes: List = None, oracle: bool = False):
-        if classes is None:
-            return self.forward_(text, visual)
-        elif not oracle:
+    def forward(self, text: Tensor, visual: Tensor, classes: List = None):
+        if self.predict:
             return self.forward_predict(text, visual, classes)
-        else:
+        elif self.oracle:
             return self.forward_oracle(text, visual, classes)
+        else:
+            return self.forward_(text, visual)
 
 
     def forward_(self, text: Tensor, visual: Tensor):
@@ -78,11 +81,10 @@ class TextDecoder(nn.Module):
 
         contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
 
-        loss = 0
         keys = self.keys_proj(text) if self.return_keys else None          
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
-        return loss, keys, queries
+        return {"keys":keys, "queries":queries}
     
     
     def forward_predict(self, text: Tensor, visual: Tensor, classes: List):
@@ -111,7 +113,7 @@ class TextDecoder(nn.Module):
         keys = self.keys_proj(text) if self.return_keys else None          
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
-        return loss, keys, queries
+        return {"loss":loss, "keys":keys, "queries":queries}
     
 
     def forward_oracle(self, text: Tensor, visual: Tensor, classes: List):
@@ -128,11 +130,9 @@ class TextDecoder(nn.Module):
 
         contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
 
-        loss = 0
-        keys = None          
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
-        return loss, keys, queries
+        return {"keys":None, "queries":queries}
 
 
 
