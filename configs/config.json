@@ -24,7 +24,7 @@
   },  
   
   "encoder":{
-    "name":"clip",
+    "name":"vit",
     "freeze_vision":0,
     "freeze_text":0
   },

@@ -15,9 +15,6 @@ class DGSSModel(nn.Module):
     def __init__(self, encoder_name, ignore_value, text_prompts=None, nclasses=19, freeze_vision_encoder=False, freeze_text_encoder=True, no_neck=True, depthwise_neck=False, tqdm_neck=False, shallow_m2f=False, use_classes=False, predict_classes=False, use_text_keys=False, use_text_queries=True, nqueries=100):
         super().__init__()
 
-        self.has_text_decoder = "clip" in encoder_name and text_prompts is not None
-        self.freeze_text_encoder = freeze_text_encoder if self.has_text_decoder else True
-
         self.encoder_name = encoder_name
 
         encoder_config = {"vit":"google/vit-base-patch16-224-in21k",
@@ -25,11 +22,18 @@ class DGSSModel(nn.Module):
                           "clip":"openai/clip-vit-base-patch16"}[encoder_name]
         
         encoder_visual_dim = {"vit":768, "tiny_clip":256, "clip":768}[encoder_name]
-        encoder_text_dim = {"vit":None, "tiny_clip":256, "clip":512}[encoder_name]    
+        encoder_text_dim = {"vit":512, "tiny_clip":256, "clip":512}[encoder_name]    
+
+        self.freeze_vision_encoder = freeze_vision_encoder
+
+        self.has_text_decoder = text_prompts is not None
+        self.freeze_text_encoder = freeze_text_encoder 
 
         self.encoder = {"vit":ViTModel, "tiny_clip":CLIPModel, "clip":CLIPModel}[encoder_name].from_pretrained(encoder_config)
-        
-        self.freeze_vision_encoder = freeze_vision_encoder
+
+        if self.encoder_name == "vit" and self.has_text_decoder:
+            encoder_config = "openai/clip-vit-base-patch16"
+            self.vit_text_encoder = CLIPModel.from_pretrained(encoder_config)
 
         self.out_indices = {"vit":[3, 5, 7, 11], "tiny_clip":[4, 7, 10], "clip":[3, 5, 7, 11]}[encoder_name][-3:]
 
@@ -89,9 +93,10 @@ class DGSSModel(nn.Module):
             for param in self.encoder.parameters():
                 param.requires_grad = False
 
-        elif mode and "clip" in self.encoder_name and self.freeze_text_encoder:
-            self.encoder.text_model.train(False)
-            for param in self.encoder.text_model.parameters():
+        elif mode and self.freeze_text_encoder:
+            model = self.encoder if "clip" in self.encoder_name else self.vit_text_encoder
+            model.text_model.train(False)
+            for param in model.text_model.parameters():
                 param.requires_grad = False
 
 
@@ -105,7 +110,10 @@ class DGSSModel(nn.Module):
         vision_hidden_states = [h for i,h in enumerate(vision_hidden_states) if i in self.out_indices]
 
         if self.has_text_decoder:
-            text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
+            if self.encoder_name == "vit":  
+                text_outputs = self.vit_text_encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
+            else:
+                text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
 
             outs = self.text_decoder(text=text_outputs, visual=vision_hidden_states[-1], classes=classes)
 
@@ -139,6 +147,11 @@ class DGSSModel(nn.Module):
                                 "VIT": sum(p.numel() for p in self.encoder.parameters() if p.requires_grad),
                                 "NECK": sum(p.numel() for p in self.neck.parameters() if p.requires_grad),
                                 "MASK2FORMER": sum(p.numel() for p in self.vision_decoder.parameters() if p.requires_grad)}
+                                
+            if self.has_text_decoder:
+                trainable_params.update({
+                                "CLIP_TEXT": sum(p.numel() for p in self.vit_text_encoder.text_model.parameters() if p.requires_grad),
+                                "TEXT_DECODER": sum(p.numel() for p in self.text_decoder.parameters() if p.requires_grad)})
         else:
             trainable_params = {"TOTAL": sum(p.numel() for p in self.parameters() if p.requires_grad),
                                 "CLIP": sum(p.numel() for p in self.encoder.parameters() if p.requires_grad),
@@ -148,7 +161,8 @@ class DGSSModel(nn.Module):
                                 "MASK2FORMER": sum(p.numel() for p in self.vision_decoder.parameters() if p.requires_grad)}
             
             if self.has_text_decoder:
-                trainable_params.update({"TEXT_DECODER": sum(p.numel() for p in self.text_decoder.parameters() if p.requires_grad)})
+                trainable_params.update({
+                                "TEXT_DECODER": sum(p.numel() for p in self.text_decoder.parameters() if p.requires_grad)})
         
         if round_to_millions:
             trainable_params = {k:round((v/1e6), decimals) for k,v in trainable_params.items()}
@@ -166,6 +180,11 @@ class DGSSModel(nn.Module):
                                 "VIT": self.encoder.training,
                                 "NECK": self.neck.training,
                                 "MASK2FORMER": self.vision_decoder.training}
+            
+            if self.has_text_decoder:
+                trainable_modules.update({
+                                "CLIP_TEXT": self.vit_text_encoder.text_model.training,
+                                "TEXT_DECODER": self.text_decoder.training})
         else:
             trainable_modules = {"MODEL": self.training,
                                 "CLIP": self.encoder.training,
@@ -175,7 +194,8 @@ class DGSSModel(nn.Module):
                                 "MASK2FORMER": self.vision_decoder.training}
             
             if self.has_text_decoder:
-                trainable_modules.update({"TEXT_DECODER": self.text_decoder.training})
+                trainable_modules.update({
+                                "TEXT_DECODER": self.text_decoder.training})
 
         print("IS FROZEN:")
         [print(f"   {k}: {not v}") for k,v in trainable_modules.items()]
