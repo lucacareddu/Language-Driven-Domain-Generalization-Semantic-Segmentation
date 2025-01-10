@@ -1,12 +1,11 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
 from torch import Tensor
 
 from typing import Dict, List, Optional, Tuple, Union
 
 from models.denseclip import DenseCLIPContextDecoder
+from models.classdecoder import ClassDecoder
 
 
 class TextDecoder(nn.Module):
@@ -16,6 +15,19 @@ class TextDecoder(nn.Module):
 
         if use_classes or predict_classes:
             self.missing_emb = nn.Parameter(torch.randn(19, text_dim)) # missing classes place-holder embeddings
+
+            self.class_pos = nn.Parameter(torch.randn(19, text_dim))
+            nn.init.trunc_normal_(self.class_pos, std=.01)
+
+            self.class_decoder = ClassDecoder()
+
+            self.context_proj = nn.Linear(text_dim, text_dim, bias=False)
+            self.context_proj.apply(self._init_weights)
+            self.class_proj = nn.Linear(text_dim, text_dim, bias=False)
+            self.class_proj.apply(self._init_weights)
+
+            self.logit_scale = nn.Parameter(torch.tensor(1e-4))
+            self.contrastive_loss = nn.CrossEntropyLoss()
         
         self.text_proj = nn.Parameter(torch.randn(text_dim, text_dim)) 
         
@@ -66,7 +78,7 @@ class TextDecoder(nn.Module):
 
     def forward(self, text: Tensor, visual: Tensor, classes: List = None):
         if self.predict:
-            return self.forward_predict(text, visual, classes)
+            return self.forward__(text, visual, classes)
         elif self.oracle:
             return self.forward_oracle(text, visual, classes)
         else:
@@ -90,12 +102,8 @@ class TextDecoder(nn.Module):
     def forward_predict(self, text: Tensor, visual: Tensor, classes: List):
         text = text.expand(visual.shape[0],-1,-1)
 
-        # print(torch.mean(text).item(), torch.mean(visual).item(), torch.std(text).item(), torch.std(visual).item())
-
         text_emb = text @ self.text_proj
         visual_emb = visual @ self.visual_proj
-
-        # print(torch.mean(text_emb).item(), torch.mean(visual_emb).item(), torch.std(text_emb).item(), torch.std(visual_emb).item())
 
         contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
 
@@ -116,6 +124,63 @@ class TextDecoder(nn.Module):
         return {"loss":loss, "keys":keys, "queries":queries}
     
 
+    def forward__(self, text: Tensor, visual: Tensor, classes: List):
+        text = text.expand(visual.shape[0],-1,-1)
+
+        text_emb = text @ self.text_proj
+        visual_emb = visual @ self.visual_proj
+
+        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
+
+        loss, class_emb, acc = self.class_decoder(contextualized_text, classes)
+        
+        keys = self.keys_proj(text_emb) if self.return_keys else None          
+        queries = self.queries_proj(class_emb) if self.return_queries else None  
+
+        return {"loss":loss, "acc":acc, "keys":keys, "queries":queries}
+
+
+    def forward___(self, text: Tensor, visual: Tensor, classes: List):
+        text = torch.cat([text, self.missing_emb]).expand(visual.shape[0],-1,-1)
+
+        text_emb = text @ self.text_proj
+        visual_emb = visual @ self.visual_proj
+
+        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
+
+        contextualized_text += self.class_pos.repeat(visual.shape[0],2,1)
+
+        class_emb = self.class_decoder(contextualized_text, classes)
+
+        context_proj = self.context_proj(contextualized_text)
+        class_proj = self.class_proj(class_emb)
+
+        # normalized features
+        context_embeds = context_proj / torch.norm(context_proj, p=2, dim=-1, keepdim=True)
+        class_embeds = class_proj / torch.norm(class_proj, p=2, dim=-1, keepdim=True)
+
+        # cosine similarity as logits
+        logits_per_class = torch.matmul(context_embeds, class_embeds.transpose(-1,-2)) * self.logit_scale.exp()
+
+        gt_classes = torch.zeros((visual.shape[0], 19), dtype=torch.long, device=logits_per_class.device)
+        for i in range(visual.shape[0]):
+            gt_classes[i, classes[i]] = classes[i]
+            gt_classes[i, gt_classes[i] == 0] = torch.argwhere(gt_classes[i] == 0).flatten() + 19
+
+        # print([round(x,2) for x in torch.mean(torch.max(logits_per_class, dim=1).values, dim=0).cpu().numpy().tolist()])
+        # print(self.logit_scale)
+        # print([round(x,2) for x in torch.mean(logits_per_class, dim=[0,1]).cpu().numpy().tolist()])
+        # print([round(x,2) for x in torch.std(logits_per_class, dim=[0,1]).cpu().numpy().tolist()])
+        # print()
+        
+        loss = self.contrastive_loss(logits_per_class, gt_classes)
+        
+        keys = self.keys_proj(text) if self.return_keys else None          
+        queries = self.queries_proj(class_emb) if self.return_queries else None  
+
+        return {"loss":0, "keys":keys, "queries":queries}
+    
+
     def forward_oracle(self, text: Tensor, visual: Tensor, classes: List):
         text = text.repeat(visual.shape[0],1,1)
 
@@ -133,80 +198,4 @@ class TextDecoder(nn.Module):
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
         return {"keys":None, "queries":queries}
-
-
-
-# class TokenDecoderLayer(nn.Module):
-#     def __init__(
-#         self,
-#         embed_dims: int = 256,
-#     ) -> None:
-#         super().__init__()
-#         self.embed_dims = embed_dims
-        
-#         self.mlp_token2feat = nn.Linear(self.embed_dims, self.embed_dims)
-#         nn.init.kaiming_uniform_(self.mlp_token2feat.weight, a=math.sqrt(5))
-        
-#         self.mlp_delta_f = nn.Linear(self.embed_dims, self.embed_dims)
-#         nn.init.kaiming_uniform_(self.mlp_token2feat.weight, a=math.sqrt(5))
-
-#         self.transform = nn.Linear(self.embed_dims, self.embed_dims)
-#         nn.init.kaiming_uniform_(self.transform.weight, a=math.sqrt(5))
-
-#     def forward(
-#         self, feats: Tensor, tokens: Tensor, batch_first=True
-#     ) -> Tensor:
-#         if batch_first:
-#             feats = feats.permute(1, 0, 2)
-#         delta_feat = self.forward_delta_feat(
-#             feats,
-#             tokens
-#         )
-#         feats = feats + delta_feat
-#         if batch_first:
-#             feats = feats.permute(1, 0, 2)
-#         return feats
-
-#     def forward_delta_feat(self, feats: Tensor, tokens: Tensor) -> Tensor:
-#         feats = self.transform(feats)
-#         attn = torch.einsum("kbc,mc->kbm", feats, tokens)
-#         if True:
-#             attn = attn * (self.embed_dims**-0.5)
-#             attn = F.softmax(attn, dim=-1)
-#         delta_f = torch.einsum(
-#             "kbm,mc->kbc",
-#             attn,
-#             self.mlp_token2feat(tokens),
-#         )
-#         delta_f = self.mlp_delta_f(delta_f)
-#         return delta_f
-
-
-# class TokenDecoder(nn.Module):
-#     def __init__(
-#             self,
-#             layers: int = 6,
-#             token_length: int = 19,
-#             embed_dims: int = 256,
-#             query_dims: int = 256,
-#             gamma_init: float = 1e-4,
-#         ) -> None:
-#             super().__init__()
-
-#             self.learnable_tokens = nn.Parameter(torch.empty([token_length, embed_dims]))        
-#             nn.init.trunc_normal_(self.learnable_tokens, std=.02)
-
-#             self.layers = nn.ModuleList([TokenDecoderLayer() for _ in range(layers)])
-
-#             self.out_proj = nn.Linear(embed_dims, query_dims)
-#             self.gamma = nn.Parameter(torch.ones(embed_dims) * gamma_init)
     
-#     def forward(self, feats: Tensor) -> Tuple[Tensor, Tensor]:
-#         x = feats
-#         for layer in self.layers:
-#             x = layer(x, self.learnable_tokens)
-#         x = self.out_proj(x)
-#         feats = feats + self.gamma * x   
-#         if torch.rand(1) < 1e-2:
-#             print(self.gamma)
-#         return feats, self.learnable_tokens
