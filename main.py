@@ -163,7 +163,7 @@ for i_iter in trange(iter_start, max_iterations):
     if normalization:
         images = normalize(images)
 
-    loss = model(pixel_values=images, bin_masks=binmasks, classes=classes)
+    loss, cl_loss, cl_acc = model(pixel_values=images, bin_masks=binmasks, classes=classes)
     
     loss.backward()
     
@@ -176,6 +176,8 @@ for i_iter in trange(iter_start, max_iterations):
     if not debug:
         tb_writer.add_scalar("lr (vision_encoder)", optimizer.param_groups[0]["lr"], i_iter)
         tb_writer.add_scalar("Loss", loss, i_iter)
+        tb_writer.add_scalar("CL_Loss", cl_loss, i_iter)
+        tb_writer.add_scalar("CL_mAcc", cl_acc, i_iter)
 
     if do_checkpoints and (i_iter+1) % iters_per_save == 0:
         if not debug:
@@ -226,7 +228,7 @@ for i_iter in trange(iter_start, max_iterations):
                             crop_classes = [x[x != ignore_index] for x in crop_classes]
                             crop_binmasks = [(l.repeat(len(c),1,1) == c[:,None,None]).float() for l,c in zip(crop_labels, crop_classes)]
                             
-                            loss, crop_upsampled_logits = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
+                            loss, cl_loss, cl_acc, crop_upsampled_logits = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
                             
                             preds += torch.nn.functional.pad(crop_upsampled_logits, (int(x1), int(preds.shape[3] - x2), int(y1), int(preds.shape[2] - y2)))
                             count_mat[:, :, y1:y2, x1:x2] += 1
@@ -253,3 +255,5 @@ for i_iter in trange(iter_start, max_iterations):
                     tb_writer.add_scalar(f"Loss ({val_name}_val): ", mloss, i_iter)
                     tb_writer.add_scalar(f"mIoU ({val_name}_val): ", miou, i_iter)
                     tb_writer.add_scalar(f"mAcc ({val_name}_val): ", macc, i_iter)
+                    tb_writer.add_scalar(f"CL_Loss ({val_name}_val): ", cl_loss, i_iter)
+                    tb_writer.add_scalar(f"CL_mAcc ({val_name}_val): ", cl_acc, i_iter)

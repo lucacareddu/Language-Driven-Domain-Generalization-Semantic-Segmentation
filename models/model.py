@@ -134,9 +134,9 @@ class DGSSModel(nn.Module):
         if return_logits:
             upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(decoder_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])
             upsampled_logits = torch.stack(upsampled_logits)
-            return loss, upsampled_logits
+            return loss, outs["loss"], outs["acc"], upsampled_logits
         
-        return loss
+        return loss, outs["loss"], outs["acc"]
     
 
     def print_trainable_params(self, round_to_millions=True, decimals=2):

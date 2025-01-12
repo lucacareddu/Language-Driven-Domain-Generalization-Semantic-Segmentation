@@ -143,7 +143,7 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-path = "checkpoints/10-01_01-05-22"
+path = "checkpoints/12-01_14-43-33"
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
@@ -158,16 +158,16 @@ for resume_path in files:
     model.eval()
 
     for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
-        # if val_name == "gta":
-        #     continue
+        if val_name == "gta":
+            continue
         with torch.no_grad():
             runn_loss = torch.zeros((1)).to(device)
             runn_bins = torch.zeros((3, 19)).to(device)
             loop = tqdm(val_loader, leave=False)
             
             for i,batch in enumerate(loop):
-                # if i==1:
-                #     break
+                if i==1:
+                    break
                 images = batch["image"].to(device)
                 labels = batch["label"].to(device)              
 
@@ -198,7 +198,7 @@ for resume_path in files:
                         crop_classes = [x[x != ignore_index] for x in crop_classes]
                         crop_binmasks = [(l.repeat(len(c),1,1) == c[:,None,None]).float() for l,c in zip(crop_labels, crop_classes)]
                         
-                        loss, crop_upsampled_logits = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
+                        loss, cl_loss, cl_acc, crop_upsampled_logits = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
                         
                         preds += torch.nn.functional.pad(crop_upsampled_logits, (int(x1), int(preds.shape[3] - x2), int(y1), int(preds.shape[2] - y2)))
                         count_mat[:, :, y1:y2, x1:x2] += 1
@@ -225,3 +225,5 @@ for resume_path in files:
                 tb_writer.add_scalar(f"Loss ({val_name}_val): ", mloss, i_iter)
                 tb_writer.add_scalar(f"mIoU ({val_name}_val): ", miou, i_iter)
                 tb_writer.add_scalar(f"mAcc ({val_name}_val): ", macc, i_iter)
+                tb_writer.add_scalar(f"CL_Loss ({val_name}_val): ", cl_loss, i_iter)
+                tb_writer.add_scalar(f"CL_mAcc ({val_name}_val): ", cl_acc, i_iter)

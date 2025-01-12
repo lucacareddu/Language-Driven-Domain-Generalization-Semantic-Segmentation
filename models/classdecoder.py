@@ -53,12 +53,12 @@ class ClassDecoder(nn.Module):
 
         self.memory_proj = nn.Sequential(
             nn.LayerNorm(transformer_width),
-            nn.Linear(transformer_width, transformer_width)
+            nn.Linear(transformer_width, transformer_width, bias=False)
         )
 
         self.text_proj = nn.Sequential(
             nn.LayerNorm(transformer_width),
-            nn.Linear(transformer_width, transformer_width),
+            nn.Linear(transformer_width, transformer_width, bias=False),
         )
 
         self.decoder = nn.ModuleList([
@@ -67,7 +67,7 @@ class ClassDecoder(nn.Module):
         
         self.out_proj = nn.Sequential(
             nn.LayerNorm(transformer_width),
-            nn.Linear(transformer_width, out_dim)
+            nn.Linear(transformer_width, out_dim, bias=False)
         )
 
         self.apply(self._init_weights)
