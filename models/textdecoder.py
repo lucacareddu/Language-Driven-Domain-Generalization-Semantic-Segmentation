@@ -16,9 +16,6 @@ class TextDecoder(nn.Module):
         if use_classes or predict_classes:
             self.missing_emb = nn.Parameter(torch.randn(19, text_dim)) # missing classes place-holder embeddings
 
-            self.class_pos = nn.Parameter(torch.randn(19, text_dim))
-            nn.init.trunc_normal_(self.class_pos, std=.01)
-
             self.class_decoder = ClassDecoder()
 
             self.context_proj = nn.Linear(text_dim, text_dim, bias=False)
@@ -26,8 +23,8 @@ class TextDecoder(nn.Module):
             self.class_proj = nn.Linear(text_dim, text_dim, bias=False)
             self.class_proj.apply(self._init_weights)
 
-            self.logit_scale = nn.Parameter(torch.tensor(1e-4))
-            self.contrastive_loss = nn.CrossEntropyLoss()
+            self.logit_scale = nn.Parameter(torch.tensor(0.))
+            self.contrastive_loss = nn.BCEWithLogitsLoss()
         
         self.text_proj = nn.Parameter(torch.randn(text_dim, text_dim)) 
         
@@ -97,6 +94,45 @@ class TextDecoder(nn.Module):
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
         return {"keys":keys, "queries":queries}
+
+
+    def forward__(self, text: Tensor, visual: Tensor, classes: List):
+        batch_size = visual.shape[0]
+
+        text = torch.cat([text, self.missing_emb]).expand(batch_size,-1,-1)
+
+        text_emb = text @ self.text_proj
+        visual_emb = visual @ self.visual_proj
+
+        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
+
+        class_emb = self.class_decoder(contextualized_text)
+
+        context_proj = self.context_proj(contextualized_text)
+        class_proj = self.class_proj(class_emb)
+
+        # normalized features
+        context_embeds = context_proj / torch.norm(context_proj, p=2, dim=-1, keepdim=True)
+        class_embeds = class_proj / torch.norm(class_proj, p=2, dim=-1, keepdim=True)
+
+        # cosine similarity logits
+        logits_per_class = torch.matmul(class_embeds, context_embeds.transpose(-1,-2)) * self.logit_scale.exp()
+
+        class_bins = torch.stack([torch.bincount(c, minlength=19) for c in classes])
+        gt_mat = torch.zeros((batch_size, 19, 38), device=class_embeds.device)
+        gt_mat[:,torch.arange(19),torch.arange(19)] = class_bins.float()
+        gt_mat[:,torch.arange(19),torch.arange(19,38)] = (class_bins == 0).float()
+        
+        loss = self.contrastive_loss(logits_per_class, gt_mat)
+
+        batch_indices = torch.cat([torch.full((19,),i) for i in range(batch_size)])
+        pred_indices = logits_per_class.argmax(dim=-1)
+        pred_class = contextualized_text[batch_indices,pred_indices.flatten(),:].reshape(batch_size,19,-1)
+        
+        keys = self.keys_proj(text) if self.return_keys else None          
+        queries = self.queries_proj(pred_class) if self.return_queries else None  
+
+        return {"loss":loss, "keys":keys, "queries":queries}
     
     
     def forward_predict(self, text: Tensor, visual: Tensor, classes: List):
@@ -122,63 +158,6 @@ class TextDecoder(nn.Module):
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
         return {"loss":loss, "keys":keys, "queries":queries}
-    
-
-    def forward__(self, text: Tensor, visual: Tensor, classes: List):
-        text = text.expand(visual.shape[0],-1,-1)
-
-        text_emb = text @ self.text_proj
-        visual_emb = visual @ self.visual_proj
-
-        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
-
-        loss, class_emb, acc = self.class_decoder(contextualized_text, classes)
-        
-        keys = self.keys_proj(text_emb) if self.return_keys else None          
-        queries = self.queries_proj(class_emb) if self.return_queries else None  
-
-        return {"loss":loss, "acc":acc, "keys":keys, "queries":queries}
-
-
-    def forward___(self, text: Tensor, visual: Tensor, classes: List):
-        text = torch.cat([text, self.missing_emb]).expand(visual.shape[0],-1,-1)
-
-        text_emb = text @ self.text_proj
-        visual_emb = visual @ self.visual_proj
-
-        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
-
-        contextualized_text += self.class_pos.repeat(visual.shape[0],2,1)
-
-        class_emb = self.class_decoder(contextualized_text, classes)
-
-        context_proj = self.context_proj(contextualized_text)
-        class_proj = self.class_proj(class_emb)
-
-        # normalized features
-        context_embeds = context_proj / torch.norm(context_proj, p=2, dim=-1, keepdim=True)
-        class_embeds = class_proj / torch.norm(class_proj, p=2, dim=-1, keepdim=True)
-
-        # cosine similarity as logits
-        logits_per_class = torch.matmul(context_embeds, class_embeds.transpose(-1,-2)) * self.logit_scale.exp()
-
-        gt_classes = torch.zeros((visual.shape[0], 19), dtype=torch.long, device=logits_per_class.device)
-        for i in range(visual.shape[0]):
-            gt_classes[i, classes[i]] = classes[i]
-            gt_classes[i, gt_classes[i] == 0] = torch.argwhere(gt_classes[i] == 0).flatten() + 19
-
-        # print([round(x,2) for x in torch.mean(torch.max(logits_per_class, dim=1).values, dim=0).cpu().numpy().tolist()])
-        # print(self.logit_scale)
-        # print([round(x,2) for x in torch.mean(logits_per_class, dim=[0,1]).cpu().numpy().tolist()])
-        # print([round(x,2) for x in torch.std(logits_per_class, dim=[0,1]).cpu().numpy().tolist()])
-        # print()
-        
-        loss = self.contrastive_loss(logits_per_class, gt_classes)
-        
-        keys = self.keys_proj(text) if self.return_keys else None          
-        queries = self.queries_proj(class_emb) if self.return_queries else None  
-
-        return {"loss":0, "keys":keys, "queries":queries}
     
 
     def forward_oracle(self, text: Tensor, visual: Tensor, classes: List):

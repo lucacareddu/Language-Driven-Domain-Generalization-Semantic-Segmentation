@@ -40,8 +40,8 @@ freeze_vision = config["encoder"]["freeze_vision"]
 freeze_text = config["encoder"]["freeze_text"]
 
 shallow_m2f = config["decoder"]["shallow_m2f"]
-use_text = "clip" in encoder_name and config["decoder"]["use_text"]
-classdef_prompts = use_text and config["decoder"]["classdef_prompts"]
+use_text = config["decoder"]["use_text"]
+classdef_prompts = config["decoder"]["classdef_prompts"]
 use_classes = config["decoder"]["use_classes"]
 predict_classes = config["decoder"]["predict_classes"]
 
@@ -112,10 +112,13 @@ model.print_frozen_modules()
 
 params = []
 
-if "clip" in encoder_name and freeze_text:
-    params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
-elif not freeze_vision:
-    params.append({'name':"encoder", 'params': model.encoder.parameters()})
+if not freeze_vision:
+    if "clip" in encoder_name and freeze_text:
+        params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
+    else:
+        params.append({'name':"encoder", 'params': model.encoder.parameters()})
+        if encoder_name == "vit" and model.has_text_decoder and not freeze_text:
+            params.append({'name':"encoder", 'params': model.vit_text_encoder.parameters()})
 
 params.append({'name':"neck", 'params': model.neck.parameters()})
 params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})
@@ -140,7 +143,7 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-path = "checkpoints/09-01_16-24-50"
+path = "checkpoints/10-01_01-05-22"
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
