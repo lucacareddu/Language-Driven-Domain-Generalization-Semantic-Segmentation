@@ -18,13 +18,16 @@ class TextDecoder(nn.Module):
 
             self.class_decoder = ClassDecoder()
 
-            self.context_proj = nn.Linear(text_dim, text_dim, bias=False)
-            self.context_proj.apply(self._init_weights)
-            self.class_proj = nn.Linear(text_dim, text_dim, bias=False)
-            self.class_proj.apply(self._init_weights)
+            # self.context_proj = nn.Linear(text_dim, text_dim, bias=False)
+            # self.context_proj.apply(self._init_weights)
+            # self.class_proj = nn.Linear(text_dim, text_dim, bias=False)
+            # self.class_proj.apply(self._init_weights)
 
-            self.logit_scale = nn.Parameter(torch.tensor(0.))
-            self.contrastive_loss = nn.CrossEntropyLoss()
+            # self.logit_scale = nn.Parameter(torch.tensor(1e-7))
+            # # self.ignore_index = -100
+            # self.contrastive_loss = nn.CrossEntropyLoss()#ignore_index=self.ignore_index)
+
+            self.squared_error_loss = nn.MSELoss(reduction='none')
         
         self.text_proj = nn.Parameter(torch.randn(text_dim, text_dim)) 
         
@@ -43,7 +46,7 @@ class TextDecoder(nn.Module):
             self.missing_class_predictor = nn.Linear(text_dim, 1)
             nn.init.trunc_normal_(self.missing_class_predictor.weight, std=.01)
 
-            self.missing_class_criterion = nn.BCELoss()
+            self.missing_class_criterion = nn.BCEWithLogitsLoss()
 
         self.predict = predict_classes
         self.oracle = use_classes and not predict_classes
@@ -72,9 +75,13 @@ class TextDecoder(nn.Module):
             nn.init.constant_(m.weight, 1.0)
             nn.init.constant_(m.bias, 0)
 
+    
+    def reconstruction_loss(self, pred, gt):
+        return self.squared_error_loss(pred, gt).sum(dim=-1).sqrt().mean()
+
 
     def forward(self, text: Tensor, visual: Tensor, classes: List = None):
-        if self.predict:
+        if 1:
             return self.forward__(text, visual, classes)
         elif self.oracle:
             return self.forward_oracle(text, visual, classes)
@@ -94,12 +101,44 @@ class TextDecoder(nn.Module):
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
         return {"keys":keys, "queries":queries}
-
+    
 
     def forward__(self, text: Tensor, visual: Tensor, classes: List):
         batch_size = visual.shape[0]
 
+        text = text.expand(batch_size,-1,-1)
+
+        text_emb = text @ self.text_proj
+        visual_emb = visual @ self.visual_proj
+
+        contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
+        
+        missing_class_emb = self.missing_emb.expand(batch_size,-1,-1)
+        memory = torch.cat([contextualized_text, missing_class_emb], dim=1)
+
+        class_emb = self.class_decoder(memory)
+
+        batch_indices = torch.cat([torch.full((19,),i, dtype=torch.long, device=class_emb.device) for i in range(batch_size)])
+        gt_class_indices = torch.arange(start=19, end=38, dtype=torch.long, device=class_emb.device).expand(batch_size,-1)
+        for i in range(batch_size):
+            gt_class_indices[i, classes[i]] = classes[i]
+        gt_class_indices = gt_class_indices.flatten()
+        gt_class_emb = memory.detach()[batch_indices, gt_class_indices, :].reshape(batch_size,19,-1)
+
+        loss = self.reconstruction_loss(class_emb, gt_class_emb)
+        
+        keys = self.keys_proj(text) if self.return_keys else None          
+        queries = self.queries_proj(class_emb) if self.return_queries else None  
+
+        return {"loss":loss, "keys":keys, "queries":queries}
+
+
+    def forward_cl(self, text: Tensor, visual: Tensor, classes: List):
+        batch_size = visual.shape[0]
+
         text = torch.cat([text, self.missing_emb]).expand(batch_size,-1,-1)
+
+        # text = text.expand(batch_size,-1,-1)
 
         text_emb = text @ self.text_proj
         visual_emb = visual @ self.visual_proj
@@ -118,17 +157,19 @@ class TextDecoder(nn.Module):
         # cosine similarity logits
         logits_per_class = torch.matmul(class_embeds, context_embeds.transpose(-1,-2)) * self.logit_scale.exp()
 
-        gt_indices = torch.arange(start=19, end=38, dtype=torch.long, device=logits_per_class.device).expand(batch_size,-1)
+        gt_class_indices = torch.arange(start=19, end=38, dtype=torch.long, device=logits_per_class.device).expand(batch_size,-1)
+        # gt_context_indices = torch.full((batch_size,38), self.ignore_index, dtype=torch.long, device=logits_per_class.device)
         for i in range(batch_size):
-            gt_indices[i, classes[i]] = classes[i]
+            gt_class_indices[i, classes[i]] = classes[i]
+            # gt_context_indices[i, gt_class_indices[i]] = torch.arange(19, dtype=torch.long, device=logits_per_class.device)
         
-        loss = self.contrastive_loss(logits_per_class.transpose(-1,-2), gt_indices)
+        loss = self.contrastive_loss(logits_per_class.transpose(-1,-2), gt_class_indices) #+ self.contrastive_loss(logits_per_class, gt_context_indices)) / 2
 
         batch_indices = torch.cat([torch.full((19,),i) for i in range(batch_size)])
         pred_indices = logits_per_class.argmax(dim=-1)
         pred_class = contextualized_text[batch_indices,pred_indices.flatten(),:].reshape(batch_size,19,-1)
 
-        acc = torch.mean((pred_indices == gt_indices).float())
+        acc = torch.mean((pred_indices == gt_class_indices).float())
         
         keys = self.keys_proj(text) if self.return_keys else None          
         queries = self.queries_proj(pred_class) if self.return_queries else None  
@@ -145,20 +186,23 @@ class TextDecoder(nn.Module):
         contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
 
         gt_missing_classes = (torch.stack([torch.bincount(x, minlength=19) for x in classes]) == 0).float()
-        missing_classes = torch.nn.functional.sigmoid(self.missing_class_predictor(contextualized_text).squeeze())
+        pred = self.missing_class_predictor(contextualized_text).squeeze()
+        missing_classes = pred.sigmoid()
         
-        loss = self.missing_class_criterion(missing_classes, gt_missing_classes)
+        loss = self.missing_class_criterion(pred, gt_missing_classes)
         
         contextualized_text = contextualized_text.clone()
         contextualized_text[missing_classes > 0.5] = 0
 
         missing_emb = self.missing_emb.expand(visual.shape[0],-1,-1)
         contextualized_text[contextualized_text == 0] += missing_emb[contextualized_text == 0]
+
+        acc = torch.mean(((missing_classes > 0.5) == gt_missing_classes).float())
         
         keys = self.keys_proj(text) if self.return_keys else None          
         queries = self.queries_proj(contextualized_text) if self.return_queries else None  
 
-        return {"loss":loss, "keys":keys, "queries":queries}
+        return {"loss":loss, "acc":acc, "keys":keys, "queries":queries}
     
 
     def forward_oracle(self, text: Tensor, visual: Tensor, classes: List):
