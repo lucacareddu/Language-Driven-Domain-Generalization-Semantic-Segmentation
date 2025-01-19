@@ -129,14 +129,18 @@ class DGSSModel(nn.Module):
 
         decoder_outputs = self.vision_decoder(pixel_values=multi_scale_feats, mask_labels=bin_masks, class_labels=classes)
 
-        loss = decoder_outputs.loss + (outs["loss"] if self.has_text_decoder and self.predict_classes else 0)
+        output = {"loss":decoder_outputs.loss}
+        
+        if self.has_text_decoder and self.predict_classes:
+            output.update({"aux_loss":outs["loss"], "aux_acc":outs["acc"]})
+            output["loss"] += output["aux_loss"]
         
         if return_logits:
             upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(decoder_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])
             upsampled_logits = torch.stack(upsampled_logits)
-            return loss, outs["loss"], outs["acc"], upsampled_logits
+            output["upsampled_logits"] = upsampled_logits
         
-        return loss, outs["loss"], outs["acc"]
+        return output
     
 
     def print_trainable_params(self, round_to_millions=True, decimals=2):

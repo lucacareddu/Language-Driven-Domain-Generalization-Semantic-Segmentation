@@ -1,5 +1,5 @@
 {
-  "remote":0,
+  "remote":1,
 
   "SEED":2,
   
@@ -24,13 +24,13 @@
   },  
   
   "encoder":{
-    "name":"tiny_clip",
+    "name":"clip",
     "freeze_vision":0,
     "freeze_text":0
   },
 
   "decoder":{
-    "shallow_m2f":1,
+    "shallow_m2f":0,
     "use_text":1,
     "classdef_prompts":0,
     "use_classes":0,
@@ -44,7 +44,7 @@
     "iters_per_val":4000,
     "log_dir":"logs",
     "do_checkpoints":1,
-    "iters_per_save":4000,
+    "iters_per_save":40000,
     "checkpoint_dir":"checkpoints"
   },
 
