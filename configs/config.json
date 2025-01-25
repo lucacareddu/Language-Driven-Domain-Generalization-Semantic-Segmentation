@@ -26,7 +26,7 @@
   "encoder":{
     "name":"clip",
     "freeze_vision":0,
-    "freeze_text":0
+    "freeze_text":1
   },
 
   "decoder":{
@@ -34,7 +34,7 @@
     "use_text":1,
     "classdef_prompts":0,
     "use_classes":0,
-    "predict_classes":1
+    "predict_classes":0
   },
 
   "training":{

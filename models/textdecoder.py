@@ -1,8 +1,11 @@
 import torch
 import torch.nn as nn
-from torch import Tensor
+import torch.nn.functional as F
 
+from torch import Tensor
 from typing import Dict, List, Optional, Tuple, Union
+
+from math import sqrt
 
 from models.denseclip import DenseCLIPContextDecoder
 from models.classdecoder import ClassDecoder
@@ -12,6 +15,8 @@ class TextDecoder(nn.Module):
     def __init__(self, visual_dim, text_dim, use_classes, predict_classes, return_keys, return_queries=True, out_dim=256):
         super().__init__()
         assert return_keys or return_queries
+
+        self.class_emb = nn.Parameter(torch.randn(19, text_dim))
 
         if use_classes or predict_classes:
             self.missing_emb = nn.Parameter(torch.randn(19, text_dim)) # missing classes place-holder embeddings
@@ -81,8 +86,8 @@ class TextDecoder(nn.Module):
 
 
     def forward(self, text: Tensor, visual: Tensor, classes: List = None):
-        if 1:
-            return self.forward__(text, visual, classes)
+        if self.predict:
+            return self.forward_predict(text, visual, classes)
         elif self.oracle:
             return self.forward_oracle(text, visual, classes)
         else:
@@ -90,17 +95,24 @@ class TextDecoder(nn.Module):
 
 
     def forward_(self, text: Tensor, visual: Tensor):
-        text = text.expand(visual.shape[0],-1,-1)
+        B, N, _ = visual[:,1:].shape
+
+        text = text.expand(B,-1,-1)
 
         text_emb = text @ self.text_proj
         visual_emb = visual @ self.visual_proj
 
         contextualized_text = self.context_decoder(text=text_emb, visual=visual_emb)
 
-        keys = self.keys_proj(text) if self.return_keys else None          
-        queries = self.queries_proj(contextualized_text) if self.return_queries else None  
+        pixel_emb = visual_emb[:,1:].permute(0,2,1).reshape(B, -1, int(sqrt(N)), int(sqrt(N)))
+        pixel_vectors = F.normalize(pixel_emb, dim=1, p=2)
+        text_vectors = F.normalize(contextualized_text, dim=-1, p=2)
+        score_map = torch.einsum('bchw,bkc->bkhw', pixel_vectors, text_vectors)
 
-        return {"keys":keys, "queries":queries}
+        keys = self.keys_proj(text) if self.return_keys else None          
+        queries = self.queries_proj(contextualized_text) if self.return_queries else None
+
+        return {"score_map":score_map, "keys":keys, "queries":queries}
     
 
     def forward__(self, text: Tensor, visual: Tensor, classes: List):

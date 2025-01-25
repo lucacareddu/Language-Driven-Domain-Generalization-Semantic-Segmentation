@@ -143,7 +143,7 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-path = "checkpoints/12-01_14-43-33"
+path = "checkpoints/24-01_19-10-54"
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
@@ -158,21 +158,21 @@ for resume_path in files:
     model.eval()
 
     for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
-        if val_name == "gta":
-            continue
         with torch.no_grad():
             runn_loss = torch.zeros((1)).to(device)
             runn_bins = torch.zeros((3, 19)).to(device)
+            runn_aux_loss = torch.zeros((1)).to(device)
+            runn_aux_miou = torch.zeros((1)).to(device)
             loop = tqdm(val_loader, leave=False)
             
-            for i,batch in enumerate(loop):
-                if i==1:
-                    break
+            for batch in loop:
                 images = batch["image"].to(device)
                 labels = batch["label"].to(device)              
 
                 if normalization:
                     images = normalize(images)
+
+                # SLIDE-INFERENCE adapted from DenseCLIP official MMSeg implementation
                 
                 h_stride, w_stride = stride
                 h_crop, w_crop = crop_size
@@ -198,20 +198,27 @@ for resume_path in files:
                         crop_classes = [x[x != ignore_index] for x in crop_classes]
                         crop_binmasks = [(l.repeat(len(c),1,1) == c[:,None,None]).float() for l,c in zip(crop_labels, crop_classes)]
                         
-                        loss, cl_loss, cl_acc, crop_upsampled_logits = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
+                        outs = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, labels=crop_labels, return_logits=True)
                         
-                        preds += torch.nn.functional.pad(crop_upsampled_logits, (int(x1), int(preds.shape[3] - x2), int(y1), int(preds.shape[2] - y2)))
+                        preds += torch.nn.functional.pad(outs["upsampled_logits"], (int(x1), int(preds.shape[3] - x2), int(y1), int(preds.shape[2] - y2)))
                         count_mat[:, :, y1:y2, x1:x2] += 1
+
+                        runn_loss.add_(outs["loss"] / (h_grids*w_grids))
+                        if "aux_loss" in outs.keys():
+                            runn_aux_loss.add_(outs["aux_loss"] / (h_grids*w_grids))
+                        if "aux_miou" in outs.keys():
+                            runn_aux_miou.add_(outs["aux_miou"] / (h_grids*w_grids))
 
                 assert (count_mat == 0).sum() == 0
                 preds = preds / count_mat
 
                 upsampled_logits = preds.argmax(dim=1).detach()
 
-                runn_loss.add_(loss)
                 runn_bins.add_(get_confBins(predictions=upsampled_logits, references=labels, ignore_index=ignore_index))
             
             mloss = runn_loss.item() / len(val_loader)
+            aux_mloss = runn_aux_loss.item() / len(val_loader)
+            aux_miou = runn_aux_miou.item() / len(val_loader)
             jaccard, accuracy = get_metrics(runn_bins)
             miou = torch.nanmean(jaccard).item()
             macc = torch.nanmean(accuracy).item()
@@ -225,5 +232,7 @@ for resume_path in files:
                 tb_writer.add_scalar(f"Loss ({val_name}_val): ", mloss, i_iter)
                 tb_writer.add_scalar(f"mIoU ({val_name}_val): ", miou, i_iter)
                 tb_writer.add_scalar(f"mAcc ({val_name}_val): ", macc, i_iter)
-                tb_writer.add_scalar(f"CL_Loss ({val_name}_val): ", cl_loss, i_iter)
-                tb_writer.add_scalar(f"CL_mAcc ({val_name}_val): ", cl_acc, i_iter)
+                if "aux_loss" in outs.keys():
+                    tb_writer.add_scalar(f"aux_loss ({val_name}_val): ", aux_mloss, i_iter)
+                if "aux_miou" in outs.keys():
+                    tb_writer.add_scalar(f"aux_mIoU ({val_name}_val): ", aux_miou, i_iter)

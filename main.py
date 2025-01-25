@@ -157,13 +157,14 @@ for i_iter in trange(iter_start, max_iterations):
     batch, train_iter = get_batch(train_iter, gta_train_loader)
 
     images = batch["image"].to(device)
+    labels = batch["label"].to(device)
     classes = [x.to(device) for x in batch["classes"]]
     binmasks = [x.to(device) for x in batch["bin_masks"]]
 
     if normalization:
         images = normalize(images)
 
-    outs = model(pixel_values=images, bin_masks=binmasks, classes=classes)
+    outs = model(pixel_values=images, bin_masks=binmasks, classes=classes, labels=labels)
     
     outs["loss"].backward()
     
@@ -178,8 +179,8 @@ for i_iter in trange(iter_start, max_iterations):
         tb_writer.add_scalar("Loss", outs["loss"], i_iter)
         if "aux_loss" in outs.keys():
             tb_writer.add_scalar("aux_loss", outs["aux_loss"], i_iter)
-        if "aux_acc" in outs.keys():
-            tb_writer.add_scalar("aux_mAcc", outs["aux_acc"], i_iter)
+        if "aux_miou" in outs.keys():
+            tb_writer.add_scalar("aux_miou", outs["aux_miou"], i_iter)
 
     if do_checkpoints and (i_iter+1) % iters_per_save == 0:
         if not debug:
@@ -196,9 +197,9 @@ for i_iter in trange(iter_start, max_iterations):
         for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
             with torch.no_grad():
                 runn_loss = torch.zeros((1)).to(device)
-                runn_aux_loss = torch.zeros((1)).to(device)
-                runn_aux_acc = torch.zeros((1)).to(device)
                 runn_bins = torch.zeros((3, 19)).to(device)
+                runn_aux_loss = torch.zeros((1)).to(device)
+                runn_aux_miou = torch.zeros((1)).to(device)
                 loop = tqdm(val_loader, leave=False)
                 
                 for batch in loop:
@@ -234,7 +235,7 @@ for i_iter in trange(iter_start, max_iterations):
                             crop_classes = [x[x != ignore_index] for x in crop_classes]
                             crop_binmasks = [(l.repeat(len(c),1,1) == c[:,None,None]).float() for l,c in zip(crop_labels, crop_classes)]
                             
-                            outs = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, return_logits=True)
+                            outs = model(pixel_values=crop_img, bin_masks=crop_binmasks, classes=crop_classes, labels=crop_labels, return_logits=True)
                             
                             preds += torch.nn.functional.pad(outs["upsampled_logits"], (int(x1), int(preds.shape[3] - x2), int(y1), int(preds.shape[2] - y2)))
                             count_mat[:, :, y1:y2, x1:x2] += 1
@@ -242,8 +243,8 @@ for i_iter in trange(iter_start, max_iterations):
                             runn_loss.add_(outs["loss"] / (h_grids*w_grids))
                             if "aux_loss" in outs.keys():
                                 runn_aux_loss.add_(outs["aux_loss"] / (h_grids*w_grids))
-                            if "aux_acc" in outs.keys():
-                                runn_aux_acc.add_(outs["aux_acc"] / (h_grids*w_grids))
+                            if "aux_miou" in outs.keys():
+                                runn_aux_miou.add_(outs["aux_miou"] / (h_grids*w_grids))
 
                     assert (count_mat == 0).sum() == 0
                     preds = preds / count_mat
@@ -254,7 +255,7 @@ for i_iter in trange(iter_start, max_iterations):
                 
                 mloss = runn_loss.item() / len(val_loader)
                 aux_mloss = runn_aux_loss.item() / len(val_loader)
-                aux_macc = runn_aux_acc.item() / len(val_loader)
+                aux_miou = runn_aux_miou.item() / len(val_loader)
                 jaccard, accuracy = get_metrics(runn_bins)
                 miou = torch.nanmean(jaccard).item()
                 macc = torch.nanmean(accuracy).item()
@@ -270,5 +271,5 @@ for i_iter in trange(iter_start, max_iterations):
                     tb_writer.add_scalar(f"mAcc ({val_name}_val): ", macc, i_iter)
                     if "aux_loss" in outs.keys():
                         tb_writer.add_scalar(f"aux_loss ({val_name}_val): ", aux_mloss, i_iter)
-                    if "aux_acc" in outs.keys():
-                        tb_writer.add_scalar(f"aux_mAcc ({val_name}_val): ", aux_macc, i_iter)
+                    if "aux_miou" in outs.keys():
+                        tb_writer.add_scalar(f"aux_mIoU ({val_name}_val): ", aux_miou, i_iter)

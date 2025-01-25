@@ -7,6 +7,8 @@ from models.neck import ViTNeck, tqdmNeck
 from transformers import Mask2FormerConfig, Mask2FormerForUniversalSegmentation, Mask2FormerImageProcessor
 from models.textdecoder import TextDecoder
 
+from utils.metric import get_confBins, get_metrics
+
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
@@ -70,7 +72,9 @@ class DGSSModel(nn.Module):
                 self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys_pos.apply(self._init_weights)       
 
             if use_text_queries:
-                del self.vision_decoder.model.transformer_module.queries_features         
+                del self.vision_decoder.model.transformer_module.queries_features   
+
+        self.ignore_value = ignore_value      
 
 
     def _init_weights(self, m):
@@ -100,7 +104,7 @@ class DGSSModel(nn.Module):
                 param.requires_grad = False
 
 
-    def forward(self, pixel_values, bin_masks, classes, return_logits=False):
+    def forward(self, pixel_values, bin_masks, classes, labels, return_logits=False):
         if self.encoder_name == "vit":      
             vision_outputs = self.encoder(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
         else:
@@ -117,6 +121,11 @@ class DGSSModel(nn.Module):
 
             outs = self.text_decoder(text=text_outputs, visual=vision_hidden_states[-1], classes=classes)
 
+            small_labels = torch.nn.functional.interpolate(labels.unsqueeze(1).float(), size=outs["score_map"].shape[-2:], mode="nearest").squeeze(1).long()
+            denseclip_loss = torch.nn.functional.cross_entropy(outs["score_map"], small_labels, ignore_index=self.ignore_value)
+            jaccard, accuracy = get_metrics(get_confBins(predictions=outs["score_map"].argmax(dim=1), references=small_labels, ignore_index=self.ignore_value))
+            miou, macc = torch.nanmean(jaccard).item(), torch.nanmean(accuracy).item()
+
             if outs["keys"] is not None:
                 # To cross-attention layers in pixel decoder (mask2former encoder) as key-value
                 self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys = outs["keys"]
@@ -132,8 +141,8 @@ class DGSSModel(nn.Module):
         output = {"loss":decoder_outputs.loss}
         
         if self.has_text_decoder and self.predict_classes:
-            output.update({"aux_loss":outs["loss"], "aux_acc":outs["acc"]})
-            output["loss"] += output["aux_loss"]
+            output["loss"] += denseclip_loss
+            output.update({"aux_loss":denseclip_loss, "aux_miou":miou, "aux_macc":macc})
         
         if return_logits:
             upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(decoder_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])
