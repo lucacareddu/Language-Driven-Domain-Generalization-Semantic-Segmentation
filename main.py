@@ -42,8 +42,6 @@ freeze_text = config["encoder"]["freeze_text"]
 shallow_m2f = config["decoder"]["shallow_m2f"]
 use_text = config["decoder"]["use_text"]
 classdef_prompts = config["decoder"]["classdef_prompts"]
-use_classes = config["decoder"]["use_classes"]
-predict_classes = config["decoder"]["predict_classes"]
 
 gta_root = config["gta"]["remote_root"] if config["remote"] else config["gta"]["local_root"]
 gta_inp_size = tuple(config["gta"]["input_size"])
@@ -104,7 +102,7 @@ if use_text:
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text, shallow_m2f=shallow_m2f, use_classes=use_classes, predict_classes=predict_classes)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text, shallow_m2f=shallow_m2f)
 model.to(device)
 
 model.print_trainable_params()
@@ -115,6 +113,7 @@ params = []
 if not freeze_vision:
     if "clip" in encoder_name and freeze_text:
         params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
+        params.append({'name':"encoder", 'params': model.encoder.visual_projection.parameters()})
     else:
         params.append({'name':"encoder", 'params': model.encoder.parameters()})
         if encoder_name == "vit" and model.has_text_decoder and not freeze_text:

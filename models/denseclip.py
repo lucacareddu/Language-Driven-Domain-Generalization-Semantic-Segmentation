@@ -140,7 +140,7 @@ class DenseCLIPContextDecoder(nn.Module):
         self.gamma = nn.Parameter(torch.ones(visual_dim) * gamma_init)
 
     def forward(self, text, visual):
-        residual = self.decode(text=text, visual=visual)
-        contextualized_text = text + self.gamma * residual
+        x = self.decode(text=text, visual=visual)
+        contextualized_text = text + self.gamma * x
         return contextualized_text
     

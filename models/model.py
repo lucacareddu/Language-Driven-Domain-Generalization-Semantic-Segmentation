@@ -14,7 +14,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 class DGSSModel(nn.Module):
-    def __init__(self, encoder_name, ignore_value, text_prompts=None, nclasses=19, freeze_vision_encoder=False, freeze_text_encoder=True, no_neck=True, depthwise_neck=False, tqdm_neck=False, shallow_m2f=False, use_classes=False, predict_classes=False, use_text_keys=False, use_text_queries=True, nqueries=100):
+    def __init__(self, encoder_name, ignore_value, text_prompts=None, nclasses=19, freeze_vision_encoder=False, freeze_text_encoder=True, no_neck=True, depthwise_neck=False, tqdm_neck=False, shallow_m2f=False, use_text_keys=False, use_text_queries=True, nqueries=100):
         super().__init__()
 
         self.encoder_name = encoder_name
@@ -32,6 +32,9 @@ class DGSSModel(nn.Module):
         self.freeze_text_encoder = freeze_text_encoder 
 
         self.encoder = {"vit":ViTModel, "tiny_clip":CLIPModel, "clip":CLIPModel}[encoder_name].from_pretrained(encoder_config)
+
+        import copy
+        # self.encoderFrozen = copy.deepcopy(self.encoder)
 
         if self.encoder_name == "vit" and self.has_text_decoder:
             encoder_config = "openai/clip-vit-base-patch16"
@@ -58,9 +61,7 @@ class DGSSModel(nn.Module):
             self.text_ids = text_tokenized["input_ids"].cuda()
             self.text_att = text_tokenized["attention_mask"].cuda()
 
-            self.text_decoder = TextDecoder(visual_dim=encoder_visual_dim, text_dim=encoder_text_dim, use_classes=use_classes, predict_classes=predict_classes, return_keys=use_text_keys, return_queries=use_text_queries)
-
-            self.predict_classes = predict_classes
+            self.text_decoder = TextDecoder(visual_dim=encoder_visual_dim, text_dim=encoder_text_dim, return_keys=use_text_keys, return_queries=use_text_queries)
 
             if use_text_keys:
                 self.vision_decoder.model.pixel_level_module.decoder.encoder.crss_attn = nn.ModuleList([nn.MultiheadAttention(embed_dim=vision_decoder_config.hidden_dim, 
@@ -109,8 +110,13 @@ class DGSSModel(nn.Module):
             vision_outputs = self.encoder(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
         else:
             vision_outputs = self.encoder.get_image_features(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
+            
+            # self.encoderFrozen.eval()
+            # with torch.no_grad():
+            #     vision_outputsFrozen = self.encoderFrozen.get_image_features(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
+            #     image_features = vision_outputsFrozen[1]
         
-        vision_hidden_states = vision_outputs["hidden_states"]
+        vision_hidden_states = vision_outputs[0]["hidden_states"]
         vision_hidden_states = [h for i,h in enumerate(vision_hidden_states) if i in self.out_indices]
 
         if self.has_text_decoder:
@@ -119,33 +125,36 @@ class DGSSModel(nn.Module):
             else:
                 text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
 
-            outs = self.text_decoder(text=text_outputs, visual=vision_hidden_states[-1], classes=classes)
+            # text_outputs = text_outputs[None, :, :] * image_features[:, None, :]
 
-            small_labels = torch.nn.functional.interpolate(labels.unsqueeze(1).float(), size=outs["score_map"].shape[-2:], mode="nearest").squeeze(1).long()
-            denseclip_loss = torch.nn.functional.cross_entropy(outs["score_map"], small_labels, ignore_index=self.ignore_value)
-            jaccard, accuracy = get_metrics(get_confBins(predictions=outs["score_map"].argmax(dim=1), references=small_labels, ignore_index=self.ignore_value))
-            miou, macc = torch.nanmean(jaccard).item(), torch.nanmean(accuracy).item()
+            text_decoder_outputs = self.text_decoder(text=text_outputs, visual=vision_outputs[1], proj=False)
 
-            if outs["keys"] is not None:
+            if text_decoder_outputs["score_map"] is not None:
+                small_labels = torch.nn.functional.interpolate(labels.unsqueeze(1).float(), size=text_decoder_outputs["score_map"].shape[-2:], mode="nearest").squeeze(1).long()
+                denseclip_loss = torch.nn.functional.cross_entropy(text_decoder_outputs["score_map"], small_labels, ignore_index=self.ignore_value)
+                jaccard, accuracy = get_metrics(get_confBins(predictions=text_decoder_outputs["score_map"].argmax(dim=1), references=small_labels, ignore_index=self.ignore_value))
+                miou, macc = torch.nanmean(jaccard).item(), torch.nanmean(accuracy).item()
+
+            if text_decoder_outputs["keys"] is not None:
                 # To cross-attention layers in pixel decoder (mask2former encoder) as key-value
-                self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys = outs["keys"]
+                self.vision_decoder.model.pixel_level_module.decoder.encoder.text_keys = text_decoder_outputs["keys"]
             
-            if outs["queries"] is not None:
+            if text_decoder_outputs["queries"] is not None:
                 # To cross-attention layers in transformer decoder layers (mask2former decoder) as queries
-                self.vision_decoder.model.transformer_module.text_queries = outs["queries"]
+                self.vision_decoder.model.transformer_module.text_queries = text_decoder_outputs["queries"]
 
         multi_scale_feats = self.neck(vision_hidden_states)
 
-        decoder_outputs = self.vision_decoder(pixel_values=multi_scale_feats, mask_labels=bin_masks, class_labels=classes)
+        m2f_outputs = self.vision_decoder(pixel_values=multi_scale_feats, mask_labels=bin_masks, class_labels=classes)
 
-        output = {"loss":decoder_outputs.loss}
+        output = {"loss":m2f_outputs.loss}
         
-        if self.has_text_decoder and self.predict_classes:
+        if self.has_text_decoder and text_decoder_outputs["score_map"] is not None:
             output["loss"] += denseclip_loss
             output.update({"aux_loss":denseclip_loss, "aux_miou":miou, "aux_macc":macc})
         
         if return_logits:
-            upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(decoder_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])
+            upsampled_logits = self.vision_decoder_processor.post_process_semantic_segmentation(m2f_outputs, target_sizes=[pixel_values.shape[-2:]] * pixel_values.shape[0])
             upsampled_logits = torch.stack(upsampled_logits)
             output["upsampled_logits"] = upsampled_logits
         
