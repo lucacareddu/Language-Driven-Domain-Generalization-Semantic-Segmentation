@@ -42,8 +42,6 @@ freeze_text = config["encoder"]["freeze_text"]
 shallow_m2f = config["decoder"]["shallow_m2f"]
 use_text = config["decoder"]["use_text"]
 classdef_prompts = config["decoder"]["classdef_prompts"]
-use_classes = config["decoder"]["use_classes"]
-predict_classes = config["decoder"]["predict_classes"]
 
 gta_root = config["gta"]["remote_root"] if config["remote"] else config["gta"]["local_root"]
 gta_inp_size = tuple(config["gta"]["input_size"])
@@ -104,7 +102,7 @@ if use_text:
 
 #################################################################################################
 
-model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text, shallow_m2f=shallow_m2f, use_classes=use_classes, predict_classes=predict_classes)
+model = DGSSModel(encoder_name=encoder_name, ignore_value=ignore_index, text_prompts=text_prompts, freeze_vision_encoder=freeze_vision, freeze_text_encoder=freeze_text, shallow_m2f=shallow_m2f)
 model.to(device)
 
 model.print_trainable_params()
@@ -115,6 +113,7 @@ params = []
 if not freeze_vision:
     if "clip" in encoder_name and freeze_text:
         params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
+        params.append({'name':"encoder", 'params': model.encoder.visual_projection.parameters()})
     else:
         params.append({'name':"encoder", 'params': model.encoder.parameters()})
         if encoder_name == "vit" and model.has_text_decoder and not freeze_text:
@@ -143,7 +142,7 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-path = "checkpoints/24-01_19-10-54"
+path = "checkpoints/27-01_11-04-47"
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
@@ -157,7 +156,9 @@ for resume_path in files:
 
     model.eval()
 
-    for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
+    for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), crop_size]):
+        if val_name == "gta":
+            continue
         with torch.no_grad():
             runn_loss = torch.zeros((1)).to(device)
             runn_bins = torch.zeros((3, 19)).to(device)
@@ -208,6 +209,9 @@ for resume_path in files:
                             runn_aux_loss.add_(outs["aux_loss"] / (h_grids*w_grids))
                         if "aux_miou" in outs.keys():
                             runn_aux_miou.add_(outs["aux_miou"] / (h_grids*w_grids))
+                            print("mIoU: ",outs["aux_miou"])
+                            import time
+                            time.sleep(5)
 
                 assert (count_mat == 0).sum() == 0
                 preds = preds / count_mat
