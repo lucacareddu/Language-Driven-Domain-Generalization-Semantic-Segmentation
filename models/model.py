@@ -61,6 +61,10 @@ class DGSSModel(nn.Module):
             self.text_ids = text_tokenized["input_ids"].cuda()
             self.text_att = text_tokenized["attention_mask"].cuda()
 
+            context_length = 5
+            self.contexts = nn.Parameter(torch.randn(1, context_length, encoder_text_dim))
+            nn.init.trunc_normal_(self.contexts)
+
             self.text_decoder = TextDecoder(visual_dim=encoder_visual_dim, text_dim=encoder_text_dim, return_keys=use_text_keys, return_queries=use_text_queries)
 
             if use_text_keys:
@@ -114,7 +118,7 @@ class DGSSModel(nn.Module):
             # self.encoderFrozen.eval()
             # with torch.no_grad():
             #     vision_outputsFrozen = self.encoderFrozen.get_image_features(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
-            #     image_features = vision_outputsFrozen[1]
+            #     image_features = vision_outputsFrozen[1][:,0]
         
         vision_hidden_states = vision_outputs[0]["hidden_states"]
         vision_hidden_states = [h for i,h in enumerate(vision_hidden_states) if i in self.out_indices]
@@ -123,9 +127,13 @@ class DGSSModel(nn.Module):
             if self.encoder_name == "vit":  
                 text_outputs = self.vit_text_encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
             else:
-                text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att)
+                text_outputs = self.encoder.get_text_features(input_ids=self.text_ids, attention_mask=self.text_att, position_ids=self.contexts)
 
-            # text_outputs = text_outputs[None, :, :] * image_features[:, None, :]
+            # visual_tokens = vision_outputs[1][:,1:]# / vision_outputs[1][:,1:].norm(p=2, dim=-1, keepdim=True)
+            # visual_cls = vision_outputs[1][:,0] / vision_outputs[1][:,0].norm(p=2, dim=-1, keepdim=True)
+            # text = text_outputs / text_outputs.norm(p=2, dim=-1, keepdim=True)
+
+            # descriptor = torch.cat([text[None, :, :] * visual_cls[:, None, :], text.expand(visual_cls.shape[0],-1,-1)], dim=-1)
 
             text_decoder_outputs = self.text_decoder(text=text_outputs, visual=vision_outputs[1], proj=False)
 

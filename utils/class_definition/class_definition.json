@@ -1,0 +1,78 @@
+{
+    "group":{
+        "flat": {
+            "road":"Part of ground on which cars usually drive, i.e. all lanes, all directions, all streets. Including the markings on the road. Areas only delimited by markings from the main road (no texture change) are also road, e.g. bicycle lanes, roundabout lanes, or parking spaces. This label does not include curbs.",
+            "sidewalk":"Part of ground designated for pedestrians or cyclists. Delimited from the road by some obstacle, e.g. curbs or poles (might be small), not only by markings. Often elevated compared to the road. Often located at the sides of a road. This label includes a possibly delimiting curb, traffic islands (the walkable part), or pedestrian zones (where usually cars are not allowed to drive during day-time).",
+            "void":{
+                "parking":"Parking lots and driveways. Not for regular driving, but rather to park a vehicle. Different texture than road. In ambiguous cases where the driveway is not separated from the sidewalk (e.g. a building entrance), labeled as sidewalk.",
+                "rail track":"All kind of rail tracks that are non-drivable by cars, e.g. subway and train rail tracks, while tram rail tracks are usually drivable by cars and therefore part of road."
+            }
+        },
+        "human":{
+            "group":{
+                "person_":"A human that satisfies the following criterion. Assume the human moved a distance of 1m and stopped again. If the human would walk, the label is person, otherwise not. Examples are people walking, standing or sitting on the ground, on a bench, on a chair. This class also includes toddlers, someone pushing a bicycle or standing next to it with both legs on the same side of the bicycle. This class includes anything that is carried by the person, e.g. backpack, but not items touching the ground, e.g. trolleys.",
+                "person":"A human. Examples are people walking, standing or sitting on the ground, on a bench, on a chair. This class also includes toddlers, someone pushing a bicycle or standing next to it with both legs on the same side of the bicycle. This class includes anything that is carried by the person, e.g. backpack, but not items touching the ground, e.g. trolleys.",
+                "rider_":"A human that would use some device to move a distance of 1m. Includes, riders/drivers of bicycle, motorbike, scooter, skateboards, horses, roller-blades, wheel-chairs, road cleaning cars, cars without roof. Note that a visible driver of a car with roof can only be seen through the window. Since holes are not labeled, the human is included in the car label.",
+                "rider":"A human. Includes, riders/drivers of bicycle, motorbike, scooter, skateboards, horses, roller-blades, wheel-chairs, road cleaning cars, cars without roof."
+            }
+        },
+        "vehicle":{
+            "group":{
+                "car":"Car, jeep, SUV, van with continuous body shape, caravan, no other trailers.",
+                "truck":"Truck, box truck, pickup truck. Including their trailers. Back part / loading area is physically separated from driving compartment.",
+                "bus":"Bus for 9+ persons, public transport or long distance transport.",
+                "on rails_":"Vehicle on rails, e.g. tram, train.",
+                "train":"Vehicle on rails, e.g. tram, train.",
+                "motorcycle_":"Motorbike, moped, scooter without the driver (that's a rider, see above).",
+                "motorcycle":"Motorbike, moped, scooter without the driver (that's a rider).",
+                "bicycle_":"Bicycle without the driver (that's a rider, see above).",
+                "bicycle":"Bicycle without the driver (that's a rider).",
+                "void":{
+                    "caravan":"Like truck, but back is primarily for living/sleeping. Including caravan trailers.",
+                    "trailer_":"Trailers typically pulled by cars. Note that truck trailers are labeled truck, caravan trailers caravan, bicycle or horse trailers dynamic.",
+                    "trailer":"Trailers typically pulled by cars."
+                }
+            }
+        },
+        "construction":{
+            "building":"Building, skyscraper, house, bus stop building, garage, car port. If a building has a glass wall that you can see through, the wall is still building. Includes scaffolding attached to buildings.",
+            "wall":"Individual standing wall. Not part of a building.",
+            "fence":"Fence including any holes.",
+            "void":{
+                "guard rail":"All types of guard rails/crash barriers.",
+                "bridge_":"Bridge. Only the bridge. Fences, people or vehicles on top are labeled separately.",
+                "bridge":"Bridge. Only the bridge.",
+                "tunnel":"Tunnel wall and 'the dark'. No vehicles."
+            }
+        },
+        "object":{
+            "pole_":"Small mainly vertically oriented pole. E.g. sign pole, traffic light poles. If the pole has a horizontal part (often for traffic light poles) this part is also considered pole. If there are things mounted at the pole that are neither traffic light nor traffic sign (e.g. street lights) and that have a diameter (in pixels) of at most twice the diameter of the pole, then these things might also be labeled pole. If they are larger, they are labeled static.",
+            "pole":"Small mainly vertically oriented pole. E.g. sign pole, traffic light poles. If the pole has a horizontal part (often for traffic light poles) this part is also considered pole. If there are things mounted at the pole that are neither traffic light nor traffic sign (e.g. street lights) and that have a diameter (in pixels) of at most twice the diameter of the pole, then these things might also be labeled pole.",
+            "void":{
+                "pole group_":"Multiple poles that are cumbersome to label individually. This label is ok to use, if the gap between two poles has at most as many pixels width as a single pole.",
+                "pole group":"Multiple poles."
+            },
+            "traffic sign_":"Sign installed from the state/city authority, usually for information of the driver/cyclist/pedestrian in an everyday traffic scene, e.g. traffic- signs, parking signs, direction signs - without their poles. No ads/commercial signs. Only the front side of a sign containing the information. The back side is static. Note that commercial signs attached to buildings become building, attached to poles or standing on their own become static.",
+            "traffic sign":"Sign installed from the state/city authority, usually for information of the driver/cyclist/pedestrian in an everyday traffic scene, e.g. traffic- signs, parking signs, direction signs - without their poles. No ads/commercial signs. Only the front side of a sign containing the information.",
+            "traffic light":"The traffic light box without its poles."
+        },
+        "nature":{
+            "vegetation_":"Tree, hedge, all kinds of vertical vegetation. Plants attached to buildings are usually not annotated separately and labeled building as well. If growing at the side of a wall or building, marked as vegetation if it covers a substantial part of the surface (more than 20%).",
+            "vegetation":"Tree, hedge, all kinds of vertical vegetation.",
+            "terrain_":"Grass, all kinds of horizontal vegetation, soil or sand. These areas are not meant to be driven on. This label includes a possibly delimiting curb. Single grass stalks do not need to be annotated and get the label of the region they are growing on.",
+            "terrain":"Grass, all kinds of horizontal vegetation, soil or sand. These areas are not meant to be driven on."
+        },
+        "sky":{
+            "sky":"Open sky, without leaves of tree. Includes thin electrical wires in front of the sky."
+        },
+        "void":{
+            "void":{
+                "ground_":"All other forms of horizontal ground-level structures that do not match any of the above. For example areas that cars and pedestrians share all-day, roundabouts that are flat but delimited from the road by a curb, elevated parts of traffic islands, water. Void label for flat areas.",
+                "ground":"All other forms of horizontal ground-level structures. For example areas that cars and pedestrians share all-day, roundabouts that are flat but delimited from the road by a curb, elevated parts of traffic islands, water.",
+                "dynamic":"Things that might not be there anymore the next day/hour/minute: Movable trash bin, buggy, bag, wheelchair, animal.",
+                "static_":"Clutter in the background that is not distinguishable. Objects that do not match any of the above. For example, visible parts of the ego vehicle, mountains, street lights, back side of signs. Also rather small regions in the image that are some of the classes above, but that are cumbersome to label precisely might be annotated static.",
+                "static":"Clutter in the background that is not distinguishable. Objects that do not match any of the above. For example, visible parts of the ego vehicle, mountains, street lights, back side of signs. Also rather small regions in the image."
+            }
+        }  
+    }
+}

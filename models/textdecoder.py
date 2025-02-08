@@ -12,7 +12,7 @@ class TextDecoder(nn.Module):
         super().__init__()
         assert return_keys or return_queries
 
-        self.class_emb = nn.Parameter(torch.randn(19, text_dim)) # if text is not passed
+        self.class_emb = nn.Parameter(torch.randn(19, text_dim), requires_grad=False) # if text is not passed
 
         # if proj        
         self.text_proj = nn.Linear(text_dim, text_dim, bias=False)
@@ -29,7 +29,7 @@ class TextDecoder(nn.Module):
         nn.init.trunc_normal_(self.context_decoder.gamma, std=.02)
 
         if return_keys:
-            self.keys_proj = nn.Linear(text_dim, out_dim)
+            self.keys_proj = nn.Sequential(nn.Linear(text_dim, text_dim), nn.ReLU(inplace=True), nn.Linear(text_dim, out_dim))
             self.keys_proj.apply(self._init_weights)
         
         self.return_keys = return_keys
@@ -60,6 +60,13 @@ class TextDecoder(nn.Module):
 
         text = (text if text is not None else self.class_emb).expand(B,-1,-1)
 
+        # import matplotlib.pyplot as plt
+
+        # te = text[0] / text[0].norm(p=2, dim=-1, keepdim=True)
+        # dot = te @ te.t()
+        # plt.matshow(dot.cpu().numpy())
+        # plt.savefig(f"mat1")
+
         text_emb = self.text_proj(text) if proj else text
         visual_emb = self.visual_proj(visual) if proj else visual
 
@@ -72,7 +79,7 @@ class TextDecoder(nn.Module):
             text_vectors = F.normalize(contextualized_text, dim=-1, p=2)
             score_map = torch.einsum('bchw,bkc->bkhw', pixel_vectors, text_vectors)
 
-        keys = self.keys_proj(text) if self.return_keys else None          
+        keys = self.keys_proj(contextualized_text) if self.return_keys else None          
         queries = self.queries_proj(contextualized_text) if self.return_queries else None
 
         return {"score_map":score_map, "keys":keys, "queries":queries}

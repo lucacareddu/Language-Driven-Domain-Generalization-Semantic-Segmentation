@@ -98,6 +98,7 @@ if use_text:
             # print([len(x) for x in text_prompts])
     else:
         print("Class names employed.")
+        animals = ["bird", "cat", "dog", "ferret", "fish", "gerbil", "guinea pig", "hamster", "lizard", "mouse", "rabbit", "rat", "snake", "turtle", "alpaca", "cow", "chicken", "donkey", "goat"]
         text_prompts = [f"a photo of a {c}." for c in CITY_VALID_CLASSES]
 
 #################################################################################################
@@ -123,6 +124,7 @@ params.append({'name':"neck", 'params': model.neck.parameters()})
 params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})
 
 if model.has_text_decoder:
+    # params.append({'name':"text_decoder", 'params': model.contexts})
     params.append({'name':"text_decoder", 'params': model.text_decoder.parameters()})
     
 optimizer = torch.optim.AdamW(params, lr=lr)
@@ -156,9 +158,7 @@ for resume_path in files:
 
     model.eval()
 
-    for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), crop_size]):
-        if val_name == "gta":
-            continue
+    for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
         with torch.no_grad():
             runn_loss = torch.zeros((1)).to(device)
             runn_bins = torch.zeros((3, 19)).to(device)
@@ -209,9 +209,6 @@ for resume_path in files:
                             runn_aux_loss.add_(outs["aux_loss"] / (h_grids*w_grids))
                         if "aux_miou" in outs.keys():
                             runn_aux_miou.add_(outs["aux_miou"] / (h_grids*w_grids))
-                            print("mIoU: ",outs["aux_miou"])
-                            import time
-                            time.sleep(5)
 
                 assert (count_mat == 0).sum() == 0
                 preds = preds / count_mat

@@ -91,13 +91,14 @@ text_prompts = None
 if use_text:
     if classdef_prompts:
         print("Class definitions employed.")
-        with open("class_definition/class_definition.json","r") as f:
+        with open("utils/class_definition/class_definition.json","r") as f:
             class_definition = json.load(f)
             class_definition = df_dict_search(dictionary=class_definition, class_names=CITY_VALID_CLASSES)
             text_prompts = [f"{c}: " + class_definition[c] for c in CITY_VALID_CLASSES]
             # print([len(x) for x in text_prompts])
     else:
         print("Class names employed.")
+        animals = ["bird", "cat", "dog", "ferret", "fish", "gerbil", "guinea pig", "hamster", "lizard", "mouse", "rabbit", "rat", "snake", "turtle", "alpaca", "cow", "chicken", "donkey", "goat"]
         text_prompts = [f"a photo of a {c}." for c in CITY_VALID_CLASSES]
 
 #################################################################################################
@@ -123,6 +124,7 @@ params.append({'name':"neck", 'params': model.neck.parameters()})
 params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})
 
 if model.has_text_decoder:
+    params.append({'name':"text_decoder", 'params': model.contexts})
     params.append({'name':"text_decoder", 'params': model.text_decoder.parameters()})
     
 optimizer = torch.optim.AdamW(params, lr=lr)
