@@ -278,17 +278,11 @@ class CLIPTextEmbeddings(nn.Module):
     ) -> torch.Tensor:
         seq_length = input_ids.shape[-1] if input_ids is not None else inputs_embeds.shape[-2]
 
-        # seq_length += inputs_embeds.shape[1]
-        contexts = inputs_embeds
-        inputs_embeds = None
-
         if position_ids is None:
             position_ids = self.position_ids[:, :seq_length]
 
         if inputs_embeds is None:
             inputs_embeds = self.token_embedding(input_ids)
-        
-        # inputs_embeds = torch.cat([inputs_embeds[:,:1], contexts.expand(inputs_embeds.shape[0],-1,-1), inputs_embeds[:,1:]], dim=1)
 
         position_embeddings = self.position_embedding(position_ids)
         embeddings = inputs_embeds + position_embeddings
@@ -944,13 +938,7 @@ class CLIPTextTransformer(nn.Module):
         input_shape = input_ids.size()
         input_ids = input_ids.view(-1, input_shape[-1])
 
-        hidden_states = self.embeddings(input_ids=input_ids)#, position_ids=None, inputs_embeds=position_ids)
-
-        # context_length = position_ids.shape[1]
-        # context_shape = (input_ids.shape[0], context_length)
-        # attention_mask = torch.cat([torch.ones(context_shape, dtype=attention_mask.dtype, device=attention_mask.device), attention_mask], dim=1)
-        
-        input_shape = hidden_states.shape[:-1]
+        hidden_states = self.embeddings(input_ids=input_ids, position_ids=position_ids)
 
         # CLIP's text model uses causal mask, prepare it here.
         # https://github.com/openai/CLIP/blob/cfcffb90e69f37bf2ff1e988237a0fbe41f33c04/clip/model.py#L324
@@ -984,7 +972,7 @@ class CLIPTextTransformer(nn.Module):
             # casting to torch.int for onnx compatibility: argmax doesn't support int64 inputs with opset 14
             pooled_output = last_hidden_state[
                 torch.arange(last_hidden_state.shape[0], device=last_hidden_state.device),
-                input_ids.to(dtype=torch.int, device=last_hidden_state.device).argmax(dim=-1),#+context_length,
+                input_ids.to(dtype=torch.int, device=last_hidden_state.device).argmax(dim=-1),
             ]
         else:
             # The config gets updated `eos_token_id` from PR #24773 (so the use of exta new tokens is possible)
@@ -1114,7 +1102,7 @@ class CLIPVisionTransformer(nn.Module):
         )
 
         last_hidden_state = encoder_outputs[0]
-        pooled_output = last_hidden_state#[:, 0, :]
+        pooled_output = last_hidden_state[:, 0, :]
         pooled_output = self.post_layernorm(pooled_output)
 
         if not return_dict:
@@ -1274,7 +1262,7 @@ class CLIPModel(CLIPPreTrainedModel):
         pooled_output = text_outputs[1]
         text_features = self.text_projection(pooled_output)
 
-        return text_features
+        return pooled_output
 
     @add_start_docstrings_to_model_forward(CLIP_VISION_INPUTS_DOCSTRING)
     def get_image_features(
@@ -1325,7 +1313,7 @@ class CLIPModel(CLIPPreTrainedModel):
         pooled_output = vision_outputs[1]  # pooled_output
         image_features = self.visual_projection(pooled_output)
 
-        return vision_outputs, image_features
+        return vision_outputs
 
     @add_start_docstrings_to_model_forward(CLIP_INPUTS_DOCSTRING)
     @replace_return_docstrings(output_type=CLIPOutput, config_class=CLIPConfig)
