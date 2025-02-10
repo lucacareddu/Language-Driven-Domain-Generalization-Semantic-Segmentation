@@ -60,12 +60,20 @@ class TextDecoder(nn.Module):
 
         text = (text if text is not None else self.class_emb).expand(B,-1,-1)
 
-        # import matplotlib.pyplot as plt
-
         # te = text[0] / text[0].norm(p=2, dim=-1, keepdim=True)
         # dot = te @ te.t()
+        # import matplotlib.pyplot as plt
         # plt.matshow(dot.cpu().numpy())
-        # plt.savefig(f"mat1")
+        # from utils.colors import CITY_VALID_CLASSES
+        # plt.tick_params(
+        #     axis='x',          # changes apply to the x-axis
+        #     which='both',      # both major and minor ticks are affected
+        #     bottom=False,      # ticks along the bottom edge are off
+        #     top=False,         # ticks along the top edge are off
+        #     labelbottom=False,
+        #     labeltop=False)
+        # plt.yticks(list(range(19)), [f"a photo of a {c}." for c in CITY_VALID_CLASSES])
+        # plt.savefig(f"mat", bbox_inches='tight')
 
         text_emb = self.text_proj(text) if proj else text
         visual_emb = self.visual_proj(visual) if proj else visual

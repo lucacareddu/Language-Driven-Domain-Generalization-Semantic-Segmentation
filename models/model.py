@@ -112,15 +112,16 @@ class DGSSModel(nn.Module):
     def forward(self, pixel_values, bin_masks, classes, labels, return_logits=False):
         if self.encoder_name == "vit":      
             vision_outputs = self.encoder(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
+            vision_hidden_states = vision_outputs["hidden_states"]
         else:
             vision_outputs = self.encoder.get_image_features(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
+            vision_hidden_states = vision_outputs[0]["hidden_states"]
             
             # self.encoderFrozen.eval()
             # with torch.no_grad():
             #     vision_outputsFrozen = self.encoderFrozen.get_image_features(pixel_values=pixel_values, output_hidden_states=True, interpolate_pos_encoding=True)
             #     image_features = vision_outputsFrozen[1][:,0]
         
-        vision_hidden_states = vision_outputs[0]["hidden_states"]
         vision_hidden_states = [h for i,h in enumerate(vision_hidden_states) if i in self.out_indices]
 
         if self.has_text_decoder:

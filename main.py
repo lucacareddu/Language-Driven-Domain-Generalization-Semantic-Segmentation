@@ -115,6 +115,7 @@ if not freeze_vision:
     if "clip" in encoder_name and freeze_text:
         params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
         params.append({'name':"encoder", 'params': model.encoder.visual_projection.parameters()})
+        # params.append({'name':"encoder", 'params': model.encoder.text_projection.parameters()})
     else:
         params.append({'name':"encoder", 'params': model.encoder.parameters()})
         if encoder_name == "vit" and model.has_text_decoder and not freeze_text:
