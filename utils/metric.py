@@ -19,7 +19,7 @@ def get_confBins(predictions, references, ignore_index, n_classes=19):
     confBins = torch.stack((bin_hits, bin_p, bin_t))
     return confBins
 
-def get_metrics(confBins):
+def get_metrics(confBins, dice_smooth=1):
     bin_hits, bin_p, bin_t = confBins
 
     union = bin_p + bin_t - bin_hits
@@ -29,7 +29,9 @@ def get_metrics(confBins):
 
     jaccard[bin_t == 0] = torch.nan
 
-    return jaccard, accuracy
+    # dice = (2.* bin_hits.sum() + dice_smooth) / (bin_p.sum() + bin_t.sum() + dice_smooth)
+
+    return jaccard, accuracy#, 1-dice
 
 def perclass_repr(res):
     print("\nPer-class results (Val):")

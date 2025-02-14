@@ -72,8 +72,8 @@ class TextDecoder(nn.Module):
         #     top=False,         # ticks along the top edge are off
         #     labelbottom=False,
         #     labeltop=False)
-        # plt.yticks(list(range(19)), [f"a photo of a {c}." for c in CITY_VALID_CLASSES])
-        # plt.savefig(f"mat", bbox_inches='tight')
+        # plt.yticks(list(range(19)), [f'"a photo of a {c}."' for c in CITY_VALID_CLASSES])
+        # plt.savefig(f"names_mat", bbox_inches='tight')
 
         text_emb = self.text_proj(text) if proj else text
         visual_emb = self.visual_proj(visual) if proj else visual
