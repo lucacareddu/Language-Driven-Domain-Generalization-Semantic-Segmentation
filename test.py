@@ -8,6 +8,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 from models import DGSSModel
 
 from datasets import GTA5Dataset, CityscapesDataset
+from datasets import ACDCVal, MapillaryVistasVal
 from datasets.transformscpu import *
 
 from torchvision import transforms
@@ -73,16 +74,24 @@ if True:
 
 #################################################################################################
 
-gta_augmentations = Compose([RandomCrop(crop_size)])
-gta_val_indices = np.random.choice(24966, size=500, replace=False)
+val_city = CityscapesDataset(root=city_root, split="val", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_acdc_night = ACDCVal(root="/home/thesis/datasets/ACDC", split="night", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_acdc_rain = ACDCVal(root="/home/thesis/datasets/ACDC", split="rain", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_acdc_fog = ACDCVal(root="/home/thesis/datasets/ACDC", split="fog", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_acdc_snow = ACDCVal(root="/home/thesis/datasets/ACDC", split="snow", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_acdc_all = ACDCVal(root="/home/thesis/datasets/ACDC", split="all", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_vistas = MapillaryVistasVal(root="/home/thesis/datasets/mapi_val", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
 
-train_gta = GTA5Dataset(root=gta_root, split="train", val_indices=gta_val_indices, ignore_index=ignore_index, resize=gta_inp_size, transforms=gta_augmentations)
-val_gta = GTA5Dataset(root=gta_root, split="val", val_indices=gta_val_indices, ignore_index=ignore_index, resize=gta_inp_size)
-val_city = CityscapesDataset(root=city_root, split="val", ignore_index=ignore_index, resize=city_inp_size)
-
-gta_train_loader = DataLoader(train_gta, batch_size=batch_size, shuffle=True, num_workers=num_workers, persistent_workers=True, pin_memory=True,  worker_init_fn=lambda id: fix_seed(id), collate_fn=collate_fn)
-gta_val_loader = DataLoader(val_gta, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
 city_val_loader = DataLoader(val_city, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+acdc_night_val_loader = DataLoader(val_acdc_night, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+acdc_rain_val_loader = DataLoader(val_acdc_rain, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+acdc_fog_val_loader = DataLoader(val_acdc_fog, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+acdc_snow_val_loader = DataLoader(val_acdc_snow, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+acdc_all_val_loader = DataLoader(val_acdc_all, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+vistas_val_loader = DataLoader(val_vistas, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
+
+val_names = ["city", "acdc_night", "acdc_rain", "acdc_fog", "acdc_snow", "acdc_all", "vistas"]
+val_loaders = [city_val_loader, acdc_night_val_loader, acdc_rain_val_loader, acdc_fog_val_loader, acdc_snow_val_loader, acdc_all_val_loader, vistas_val_loader]
 
 #################################################################################################
 
@@ -108,27 +117,8 @@ model.to(device)
 
 model.print_trainable_params()
 model.print_frozen_modules()
-
-params = []
-
-if not freeze_vision:
-    if "clip" in encoder_name and freeze_text:
-        params.append({'name':"encoder", 'params': model.encoder.vision_model.parameters()})
-        params.append({'name':"encoder", 'params': model.encoder.visual_projection.parameters()})
-        # params.append({'name':"encoder", 'params': model.encoder.text_projection.parameters()})
-    else:
-        params.append({'name':"encoder", 'params': model.encoder.parameters()})
-        if encoder_name == "vit" and model.has_text_decoder and not freeze_text:
-            params.append({'name':"encoder", 'params': model.vit_text_encoder.parameters()})
-
-params.append({'name':"neck", 'params': model.neck.parameters()})
-params.append({'name':"vision_decoder", 'params': model.vision_decoder.parameters()})
-
-if model.has_text_decoder:
-    # params.append({'name':"text_decoder", 'params': model.contexts})
-    params.append({'name':"text_decoder", 'params': model.text_decoder.parameters()})
     
-optimizer = torch.optim.AdamW(params, lr=lr)
+optimizer = None
 
 #################################################################################################
 
@@ -145,7 +135,8 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-path = "checkpoints/27-01_11-04-47"
+checkpoint_path = {"lang": "saved/27-01_11-04-47", "rand": "saved/30-01_12-48-49"}
+path = checkpoint_path["lang"]
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
@@ -159,7 +150,7 @@ for resume_path in files:
 
     model.eval()
 
-    for val_name, val_loader, stride in zip(["gta", "city"], [gta_val_loader, city_val_loader], [(426,426), (341,341)]):
+    for val_name, val_loader, stride in zip(val_names, val_loaders, [(341,341)]*len(val_loaders)):
         with torch.no_grad():
             runn_loss = torch.zeros((1)).to(device)
             runn_bins = torch.zeros((3, 19)).to(device)

@@ -19,7 +19,7 @@ def resume_checkpoint(resume_path, model, optimizer):
     checkpoint = torch.load(resume_path)
 
     iteration = checkpoint['iteration'] + 1
-    model.load_state_dict(checkpoint['model'])
-    optimizer.load_state_dict(checkpoint['optimizer'])
+    model.load_state_dict(checkpoint['model'], strict=False)
+    # optimizer.load_state_dict(checkpoint['optimizer'])
 
     return iteration
