@@ -74,13 +74,13 @@ if True:
 
 #################################################################################################
 
-val_city = CityscapesDataset(root=city_root, split="val", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_acdc_night = ACDCVal(root="/home/thesis/datasets/ACDC", split="night", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_acdc_rain = ACDCVal(root="/home/thesis/datasets/ACDC", split="rain", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_acdc_fog = ACDCVal(root="/home/thesis/datasets/ACDC", split="fog", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_acdc_snow = ACDCVal(root="/home/thesis/datasets/ACDC", split="snow", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_acdc_all = ACDCVal(root="/home/thesis/datasets/ACDC", split="all", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
-val_vistas = MapillaryVistasVal(root="/home/thesis/datasets/mapi_val", ignore_index=ignore_index, resize=gta_inp_size, stats=True)
+val_city = CityscapesDataset(root=city_root, split="val", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_acdc_night = ACDCVal(root="/home/thesis/datasets/ACDC", split="night", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_acdc_rain = ACDCVal(root="/home/thesis/datasets/ACDC", split="rain", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_acdc_fog = ACDCVal(root="/home/thesis/datasets/ACDC", split="fog", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_acdc_snow = ACDCVal(root="/home/thesis/datasets/ACDC", split="snow", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_acdc_all = ACDCVal(root="/home/thesis/datasets/ACDC", split="all", ignore_index=ignore_index, resize=city_inp_size, stats=True)
+val_vistas = MapillaryVistasVal(root="/home/thesis/datasets/mapi_val", ignore_index=ignore_index, resize=city_inp_size, stats=True)
 
 city_val_loader = DataLoader(val_city, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
 acdc_night_val_loader = DataLoader(val_acdc_night, batch_size=batch_size, num_workers=num_workers, collate_fn=collate_fn)
