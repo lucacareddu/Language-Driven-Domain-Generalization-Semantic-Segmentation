@@ -135,8 +135,8 @@ import glob
 def f3(string):
     return re.findall(r'[0-9]+', string)
 
-checkpoint_path = {"lang": "saved/27-01_11-04-47", "rand": "saved/30-01_12-48-49"}
-path = checkpoint_path["lang"]
+checkpoint_path = {"clip_lang": "saved/27-01_11-04-47", "clip_rand": "saved/30-01_12-48-49", "vit_lang": "checkpoints/10-02_12-23-34", "vit_rand": "checkpoints/11-02_14-22-41"}
+path = checkpoint_path["clip_lang"]
 
 files = sorted(glob.glob(f"{path}/*.pth"), key = lambda x: int(f3(x)[-1]))
 
